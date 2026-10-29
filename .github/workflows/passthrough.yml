@@ -71,7 +71,7 @@ jobs:
         run: |
           .\tests\build_helpers_test.ps1 -PythonPath (Get-Command python.exe).Source
       - name: Prepare pinned Windows compiler
-        run: python -c "from tools import bootstrap; bootstrap.provision('llvm-mingw', bootstrap.DEPENDENCIES['llvm-mingw'])"
+        run: python -c "from tools import bootstrap; bootstrap.DEPS.mkdir(exist_ok=True); bootstrap.provision('llvm-mingw', bootstrap.DEPENDENCIES['llvm-mingw'])"
       - name: Compile XR production sources with Windows libc++
         shell: pwsh
         run: |
