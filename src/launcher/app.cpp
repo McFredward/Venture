@@ -491,7 +491,7 @@ int App::run() {
       }
     };
     auto hidden = [&] { return SDL_GetWindowFlags(window_) & (SDL_WINDOW_MINIMIZED | SDL_WINDOW_HIDDEN); };
-    const int wait = options_.launch_requested ? 0 : pacing.wait(now, hidden());
+    const int wait = pacing.wait(now, hidden());
     if (wait && SDL_WaitEventTimeout(&event, wait))
       process(event);
     while (SDL_PollEvent(&event))
@@ -526,7 +526,6 @@ int App::run() {
         else if (r->second.exit) smoke_exit_ = *r->second.exit;
       }
       if (smoke_exit_) { exit_reason_ = "direct_launch_exit"; break; }
-      SDL_Delay(20);
       continue;
     }
     if (options_.smoke_details && !smoke_detail_started_ && !refreshing_ &&
