@@ -13,17 +13,43 @@ It does not establish full support for every Quest MR feature or game.
 
 ## Trying the integration
 
-For the fork's packaged preview, open
-[Passthrough integration builds](https://github.com/McFredward/Venture/actions/workflows/passthrough.yml),
-select a successful run of `feat/steam-link-passthrough`, and download its
-`windows` artifact. Extract it, then extract the enclosed
-`Venture-windows64.zip`. Close an already running Venture and double-click
-`venture-passthrough.cmd` next to `venture.exe`. This enables passthrough only
-for that launcher process and the games it starts. The preview uses the normal
-Venture game library. The same artifact also contains the Windows installer.
+On your Windows PC, select the fork branch once:
 
-The first Windows build may take substantially longer while dependencies are
-being built; a queued or running workflow has no downloadable preview yet.
+```powershell
+git fetch origin
+git switch feat/steam-link-passthrough
+```
+
+For each test update, pull and run the installer from the checkout:
+
+```powershell
+git pull --ff-only
+.\install-passthrough.cmd
+```
+
+It prepares the project's pinned build dependencies, compiles the current
+checkout, runs the OpenXR metadata/Unity permission checks, packages Venture
+and installs a verified portable build under
+`%LOCALAPPDATA%\Venture-Passthrough\versions`. The previous test version is
+retained. The `Venture Passthrough` desktop shortcut starts the new build with
+the experimental setting; it uses the normal Venture game library. An already
+running Venture/game must be closed before starting the test version.
+
+Use an ordinary Windows terminal. Git for Windows is required; Python 3.13+
+x64 is reused or installed for the current user through WinGet when available.
+The first build downloads and compiles portable toolchain, JDK, FFmpeg and
+ANGLE dependencies and can take substantially longer than later cached builds.
+The installer keeps its build log under `build/passthrough-install`.
+
+PowerShell options, when needed:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\install-passthrough.ps1 -Jobs 4 -NoLaunch
+```
+
+`-InstallDir` selects a separate preview root. Updates use immutable directories
+and atomically switch the receipt/shortcut after checking every packaged file;
+they do not overwrite a running binary or the normal Venture installation.
 
 1. Build this branch using the normal [Windows build instructions](../README.md#build-windows).
 2. Install matching PC and Frame companions using the linked project's normal

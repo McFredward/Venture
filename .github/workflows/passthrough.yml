@@ -18,9 +18,22 @@ jobs:
       - name: Build
         run: cmake --build build/passthrough-tests --parallel 2
       - name: Test API translation and real GPU pixels
-        env:
-          VK_ICD_FILENAMES: /usr/share/vulkan/icd.d/lvp_icd.x86_64.json
-        run: ctest --test-dir build/passthrough-tests --output-on-failure
+        run: |
+          for driver in /usr/share/vulkan/icd.d/*lvp*.json; do
+            if [ -f "$driver" ]; then export VK_DRIVER_FILES="$driver"; break; fi
+          done
+          test -n "$VK_DRIVER_FILES"
+          ctest --test-dir build/passthrough-tests --output-on-failure
+      - name: Test local preview installation
+        run: python3 tests/install_preview_test.py
+      - name: Check Windows installer syntax
+        shell: pwsh
+        run: |
+          $parseErrors = $null
+          $parseTokens = $null
+          [System.Management.Automation.Language.Parser]::ParseFile(
+            "$pwd/install-passthrough.ps1", [ref]$parseTokens, [ref]$parseErrors) > $null
+          if ($parseErrors.Count) { $parseErrors | Format-List; exit 1 }
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -39,9 +52,3 @@ jobs:
           subprocess.run(['javac', '--release', '21', '-encoding', 'UTF-8', '-d', str(output), *map(str, sources)], check=True)
           subprocess.run(['java', '-Xverify:all', '-cp', str(output), 'FragmentPermissionsTest'], check=True)
           PY
-  windows-preview:
-    if: github.repository == 'McFredward/Venture' && github.event_name != 'pull_request'
-    uses: ./.github/workflows/windows.yml
-    with:
-      test: true
-      package: true
