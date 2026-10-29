@@ -46,7 +46,8 @@ public final class FragmentPermissionsTest {
     Thread render = new Thread(() -> {
       try {
         check(manager.findFragmentByTag("permission") == null, "initial render-thread lookup is allowed");
-        manager.beginTransaction().add(permission, "permission").commit();
+        // UnityPermissions uses the three-argument overload, with no view container.
+        manager.beginTransaction().add(0, permission, "permission").commit();
         check(!permission.isAdded(), "render thread enqueues instead of executing attachment");
         boolean rejected = false;
         try { manager.executePendingTransactions(); } catch (IllegalStateException expected) { rejected = true; }
@@ -65,6 +66,16 @@ public final class FragmentPermissionsTest {
     check(callbacks.get() == 2 && manager.findFragmentByTag("permission") == null,
         "one result and one removal complete the helper lifecycle");
     check(manager.findFragmentByTag(null) == null, "null tags do not match anonymous fragments");
+    boolean rejected = false;
+    try { manager.beginTransaction().add(-1, new Fragment(), "invalid"); }
+    catch (IllegalArgumentException expected) { rejected = true; }
+    check(rejected, "View.NO_ID cannot identify a fragment container");
+    Fragment headless = new Fragment();
+    manager.beginTransaction().add(7, headless, "headless").commitNow();
+    check(headless.isAdded() && manager.findFragmentByTag("headless") == headless,
+        "headless fragments accept a named container as in upstream");
+    manager.beginTransaction().remove(headless).commitNow();
+    check(!headless.isAdded(), "named-container helper detaches normally");
     System.out.println("PASS Unity render-thread fragment permissions");
   }
 }

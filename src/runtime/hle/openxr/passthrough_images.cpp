@@ -81,7 +81,12 @@ XrResult prepare_passthrough_images(XrSession target, const XrCompositionLayerPr
   if (projection.type != XR_TYPE_COMPOSITION_LAYER_PROJECTION || projection.viewCount != 2 || !projection.views)
     return XR_ERROR_LAYER_INVALID;
   if (!valid_handle(projection.space, "XrSpace")) return XR_ERROR_HANDLE_INVALID;
-  auto result = validate_chain(&projection, false);
+  // Validate the core header separately: disabled/unknown extension nodes in
+  // next must be ignored, just as InputChain does for ordinary VR submissions.
+  auto root = projection; root.next = nullptr;
+  auto result = validate_chain(&root, false);
+  if (XR_FAILED(result)) return result;
+  result = validate_chain(projection.next, false, projection.type, true);
   if (XR_FAILED(result)) return result;
   if (projection.layerFlags & ~(XR_COMPOSITION_LAYER_BLEND_TEXTURE_SOURCE_ALPHA_BIT |
       XR_COMPOSITION_LAYER_UNPREMULTIPLIED_ALPHA_BIT | XR_COMPOSITION_LAYER_CORRECT_CHROMATIC_ABERRATION_BIT))

@@ -166,6 +166,37 @@ TEST_CASE("Passthrough source intent follows submitted running layers and is rev
   CHECK(prepare_passthrough_frame(target, frame.info, output, handled) == XR_SUCCESS);
   CHECK_FALSE(handled); CHECK_FALSE(requested);
 }
+TEST_CASE("Passthrough ignores disabled composition extensions without changing current eyes") {
+  Fixture fixture; fixture.create(); grant = true; auto chain = fixture.chain();
+  fill(chain, {{{1, 0, 0, .5f}, {0, 1, 0, .25f}}});
+  Frame frame(fixture, chain); PassthroughFrame output;
+  XrCompositionLayerColorScaleBiasKHR color{XR_TYPE_COMPOSITION_LAYER_COLOR_SCALE_BIAS_KHR,
+      nullptr, {0, 0, 0, 0}, {1, 1, 1, 1}};
+  // Spirit Sling submits this node without enabling its extension. A host-only
+  // enable must not accidentally apply it to the guest's pixels, either.
+  xr::host_xr().enabled_extensions.insert("XR_KHR_composition_layer_color_scale_bias");
+  frame.scene.next = &color;
+  REQUIRE(frame.prepare(output) == XR_SUCCESS);
+  REQUIRE(frame.prepare(output) == XR_SUCCESS);
+  CHECK(output.permission != 0);
+  CHECK(output.projection.next == nullptr);
+  CHECK(pixel(output.views[0].subImage.swapchain) == std::array<unsigned char, 4>{255, 0, 0, 128});
+  CHECK(pixel(output.views[1].subImage.swapchain) == std::array<unsigned char, 4>{0, 255, 0, 64});
+  CHECK(frame.scene.next == &color);
+  frame.room.next = &color;
+  REQUIRE(frame.prepare(output) == XR_SUCCESS);
+  // Enabling the extension makes it meaningful: refuse an unsupported camera
+  // transform rather than silently discarding its requested effect.
+  state().enabled.insert("XR_KHR_composition_layer_color_scale_bias");
+  CHECK(frame.prepare(output) == XR_ERROR_FEATURE_UNSUPPORTED);
+  CHECK_FALSE(requested);
+  frame.room.next = nullptr;
+  CHECK(frame.prepare(output) == XR_ERROR_FEATURE_UNSUPPORTED);
+  state().enabled.erase("XR_KHR_composition_layer_color_scale_bias");
+  color.next = &color;
+  CHECK(frame.prepare(output) == XR_ERROR_VALIDATION_FAILURE);
+  CHECK_FALSE(requested);
+}
 TEST_CASE("Passthrough splits actual array eyes and preserves fractional and additive RGBA") {
   for (auto format : {VK_FORMAT_R8G8B8A8_UNORM, VK_FORMAT_R8G8B8A8_SRGB}) {
     CAPTURE(format);

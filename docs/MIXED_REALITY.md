@@ -6,9 +6,9 @@ It targets **Quest games emulated on a Windows PC and displayed on Steam Frame**
 The Frame supplies its own camera image; camera video never enters Venture.
 
 **Spirit Sling Tabletop is the requested first hardware reference, not a
-verified compatibility result.** This change has software GPU evidence but no
-end-to-end Spirit Sling/Steam Link/Frame result or complete Windows build from
-this checkout. It must remain experimental until that validation succeeds.
+verified compatibility result.** Software GPU checks and Windows compilation
+do not establish an end-to-end Spirit Sling/Steam Link/Frame result.
+It must remain experimental until that validation succeeds.
 It does not establish full support for every Quest MR feature or game.
 
 ## Trying the integration
@@ -72,6 +72,12 @@ they do not overwrite a running binary or the normal Venture installation.
    The first submitted pair remains opaque until the companion grants the
    source format. The runtime log reports waiting, acceptance and withdrawal.
    A format grant alone does not prove a correct headset picture.
+
+Game logs use the shared `%LOCALAPPDATA%\Venture\logs` directory, even when the
+preview executable is installed under `Venture-Passthrough\versions`. For Spirit
+Sling, collect `runtime-com.meta.spiritsling.log`, its `.console.log` counterpart
+and `launcher.log` after the test. A correctly enabled Steam Link backend logs
+`Create passthrough: backend=Steam Link` when the game creates its feature.
 
 Remove the environment variable and restart Venture to disable the experimental
 Steam Link backend. Hosts offering native `XR_FB_passthrough` use their own
