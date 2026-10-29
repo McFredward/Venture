@@ -104,7 +104,7 @@ jobs:
       - name: Build Windows launcher without game dependencies
         shell: pwsh
         run: |
-          $compilerDir = "$pwd/.deps/llvm-mingw/bin"
+          $compilerDir = "$pwd/.deps/llvm-mingw/bin".Replace('\', '/')
           $env:PATH = "$compilerDir;$env:PATH"
           cmake -S . -B build/launcher-idle -G Ninja -DCMAKE_BUILD_TYPE=Release `
             -DCMAKE_C_COMPILER="$compilerDir/clang.exe" -DCMAKE_CXX_COMPILER="$compilerDir/clang++.exe" `
