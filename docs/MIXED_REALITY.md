@@ -29,11 +29,14 @@ git pull --ff-only
 
 It prepares the project's pinned build dependencies, compiles the current
 checkout, runs the OpenXR metadata/Unity permission checks, packages Venture
-and installs a verified portable build under
-`%LOCALAPPDATA%\Venture-Passthrough\versions`. The previous test version is
-retained. The `Venture Passthrough` desktop shortcut starts the new build with
-the experimental setting; it uses the normal Venture game library. An already
-running Venture/game must be closed before starting the test version.
+and installs a verified portable build directly in
+`%LOCALAPPDATA%\Venture-Passthrough`. Updates overwrite that same installation;
+previous builds are not retained. The next installation also removes the older
+installer-created builds from its `versions` subdirectory before copying files,
+freeing their disk space for the update.
+The `Venture Passthrough` desktop shortcut starts the build with the experimental
+setting; it uses the normal Venture game library. Close Venture and its game
+before running the installer.
 
 Use an ordinary Windows terminal. Git for Windows is required; Python 3.13+
 x64 is reused or installed for the current user through WinGet when available.
@@ -51,9 +54,11 @@ PowerShell options, when needed:
 powershell -NoProfile -ExecutionPolicy Bypass -File .\install-passthrough.ps1 -Jobs 4 -NoLaunch
 ```
 
-`-InstallDir` selects a separate preview root. Updates use immutable directories
-and atomically switch the receipt/shortcut after checking every packaged file;
-they do not overwrite a running binary or the normal Venture installation.
+`-InstallDir` selects a separate preview root. Files are checked and replaced
+individually, using at most one temporary file instead of staging a second full
+build. Unchanged files are reused and obsolete packaged files are removed.
+If an update is interrupted, rerun the installer to repair it. The normal
+Venture installation, shared game library and build caches are retained.
 
 1. Build this branch using the normal [Windows build instructions](../README.md#build-windows).
 2. Install matching PC and Frame companions using the linked project's normal
@@ -74,7 +79,7 @@ they do not overwrite a running binary or the normal Venture installation.
    A format grant alone does not prove a correct headset picture.
 
 Game logs use the shared `%LOCALAPPDATA%\Venture\logs` directory, even when the
-preview executable is installed under `Venture-Passthrough\versions`. For Spirit
+preview executable is installed under `Venture-Passthrough`. For Spirit
 Sling, collect `runtime-com.meta.spiritsling.log`, its `.console.log` counterpart
 and `launcher.log` after the test. A correctly enabled Steam Link backend logs
 `Create passthrough: backend=Steam Link` when the game creates its feature.

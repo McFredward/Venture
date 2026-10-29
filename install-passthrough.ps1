@@ -1,4 +1,4 @@
-# Build the checked-out fork and install a separate, versioned MR test build.
+# Build the checked-out fork and update one fixed MR test installation.
 # Windows PowerShell 5.1 and PowerShell 7; no administrator session required.
 [CmdletBinding()]
 param(
@@ -51,6 +51,7 @@ try {
     $logPath = Join-Path $logDir ((Get-Date -Format 'yyyyMMdd-HHmmss-fff') + '-build.log')
     Start-Transcript -Path $logPath | Out-Null
     $transcribing = $true
+    Assert-VentureStopped
 
     $git = Get-Command git.exe -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1
     if ($null -eq $git) {
@@ -97,6 +98,7 @@ try {
         $InstallDir = Join-Path ([Environment]::GetFolderPath('LocalApplicationData')) 'Venture-Passthrough'
     }
     $layout = Join-Path $sourceRoot 'dist\Venture-win64'
+    Assert-VentureStopped
     Invoke-BuildStep 'Install verified test build' $python @(
         'tools/packaging/install_preview.py', '--layout', $layout, '--install-root', $InstallDir, '--revision', $revision
     )

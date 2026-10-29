@@ -66,6 +66,8 @@ jobs:
         run: |
           python tests/ffmpeg_tools_test.py
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
+      - name: Test in-place preview updates and legacy cleanup
+        run: python tests/install_preview_test.py
       - name: Test native logging in Windows PowerShell 5.1
         shell: powershell
         run: |

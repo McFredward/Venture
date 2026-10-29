@@ -1,3 +1,10 @@
+function Assert-VentureStopped {
+    $running = @(Get-Process -Name 'venture', 'venture-runtime' -ErrorAction SilentlyContinue)
+    if ($running.Count -gt 0) {
+        throw 'Close Venture and its running game, then rerun the installer. The passthrough files are updated in place.'
+    }
+}
+
 # Native stderr must reach the PowerShell host to be included in transcripts.
 # In Windows PowerShell 5.1, redirected stderr becomes ErrorRecord objects.
 function Invoke-BuildStep {
