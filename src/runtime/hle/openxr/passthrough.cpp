@@ -2,6 +2,7 @@
 #include "hle/openxr/state.h"
 #include "xr/steam_link.h"
 #include "common/log.h"
+#include <algorithm>
 #include <cmath>
 
 namespace venture::hle::openxr {

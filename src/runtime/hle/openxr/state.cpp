@@ -122,7 +122,9 @@ bool composition_layer(std::string_view structure) {
     if (m.structure == structure) {
       // XR_FB_passthrough has a documented registry erratum: flags is the
       // common header's layerFlags member, at the same offset.
-      if (m.name != header[i] && !(i == 2 && structure == "XrCompositionLayerPassthroughFB" && m.name == "flags")) return false;
+      const std::string_view member(m.name);
+      if (member != header[i] &&
+          !(i == 2 && structure == "XrCompositionLayerPassthroughFB" && member == "flags")) return false;
       if (++i == std::size(header)) return true;
     }
   return false;

@@ -4,6 +4,7 @@ cmake_minimum_required(VERSION 3.28)
 project(VenturePassthroughTests LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
+option(VENTURE_PASSTHROUGH_COMPILE_ONLY "Compile XR production sources without a runtime or GPU SDK" OFF)
 get_filename_component(venture_root "${CMAKE_CURRENT_LIST_DIR}/../.." ABSOLUTE)
 include(FetchContent)
 FetchContent_Declare(doctest
@@ -16,7 +17,41 @@ FetchContent_Declare(openxr_headers
   URL https://github.com/KhronosGroup/OpenXR-SDK/archive/f2448a8797c85814aa892efc1ab8707900fbcc78.tar.gz
   URL_HASH SHA256=1681e0f6c9633c73117c2fc376d1fe71cbd6fdd2aeb896ed5854ff022aa82eaa
   SOURCE_SUBDIR venture-headers-only)
-FetchContent_MakeAvailable(doctest nlohmann_json openxr_headers)
+FetchContent_MakeAvailable(nlohmann_json openxr_headers)
+if(VENTURE_PASSTHROUGH_COMPILE_ONLY)
+  # Same Vulkan pin as src/runtime/gfx/Dependencies.cmake. This target uses
+  # the production header boundary/defines, including libc++ on Windows.
+  FetchContent_Declare(venture_vulkan_headers
+    URL https://github.com/KhronosGroup/Vulkan-Headers/archive/c46850864f4661461b0f6cb9922c058ffea4915e.tar.gz
+    URL_HASH SHA256=539ff8eaa4abf22fddbd98225c68a0c5ddb940075a4048c8b7f5d04449070a4e
+    SOURCE_SUBDIR venture-headers-only)
+  FetchContent_MakeAvailable(venture_vulkan_headers)
+  add_library(venture_passthrough_compile_check OBJECT
+    ${venture_root}/src/runtime/hle/openxr/passthrough.cpp
+    ${venture_root}/src/runtime/hle/openxr/passthrough_images.cpp
+    ${venture_root}/src/runtime/hle/openxr/state.cpp
+    ${venture_root}/src/runtime/hle/openxr/openxr.cpp
+    ${venture_root}/src/runtime/hle/openxr/extensions.cpp
+    ${venture_root}/src/runtime/hle/openxr/register.cpp
+    ${venture_root}/src/runtime/xr/host_xr.cpp
+    ${venture_root}/src/runtime/xr/steam_link.cpp
+    ${venture_root}/src/runtime/xr/guest_images.cpp)
+  target_include_directories(venture_passthrough_compile_check PRIVATE
+    "${venture_root}/src" "${venture_root}/src/runtime"
+    "${openxr_headers_SOURCE_DIR}/include" "${venture_vulkan_headers_SOURCE_DIR}/include")
+  target_link_libraries(venture_passthrough_compile_check PRIVATE nlohmann_json::nlohmann_json)
+  target_compile_definitions(venture_passthrough_compile_check PRIVATE VK_NO_PROTOTYPES)
+  if(WIN32)
+    target_sources(venture_passthrough_compile_check PRIVATE ${venture_root}/src/runtime/platform/win32/steam_link.cpp)
+    target_compile_definitions(venture_passthrough_compile_check PRIVATE
+      NOMINMAX WIN32_LEAN_AND_MEAN UNICODE _UNICODE _WIN32_WINNT=0x0A00)
+  endif()
+  if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+    target_compile_options(venture_passthrough_compile_check PRIVATE -Werror=string-compare)
+  endif()
+  return()
+endif()
+FetchContent_MakeAvailable(doctest)
 find_package(Vulkan REQUIRED COMPONENTS glslangValidator)
 find_package(Python3 REQUIRED COMPONENTS Interpreter)
 set(generated "${CMAKE_CURRENT_BINARY_DIR}/generated")

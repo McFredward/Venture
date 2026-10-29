@@ -132,6 +132,10 @@ separation, UNORM/sRGB pixel preservation, straight/fractional/additive alpha,
 opacity, unavailable/revoked grants, MR-to-VR transitions and unsupported layouts.
 Registry regeneration is checked too. The dedicated workflow runs these tests
 on Mesa's software Vulkan driver on forks as well as upstream PRs.
+Its Windows job also compiles the affected production XR sources with the
+project's pinned LLVM-MinGW/libc++ toolchain and `VK_NO_PROTOTYPES`, without
+requiring a headset or rebuilding ANGLE. String-literal pointer comparisons
+are compile errors in that check.
 
 The supplied Spirit Sling 1.2.0/version-code 24 baseline report shows both a
 missing `XR_FB_passthrough` extension with Insight Passthrough initialization

@@ -70,3 +70,13 @@ jobs:
         shell: powershell
         run: |
           .\tests\build_helpers_test.ps1 -PythonPath (Get-Command python.exe).Source
+      - name: Prepare pinned Windows compiler
+        run: python -c "from tools import bootstrap; bootstrap.provision('llvm-mingw', bootstrap.DEPENDENCIES['llvm-mingw'])"
+      - name: Compile XR production sources with Windows libc++
+        shell: pwsh
+        run: |
+          $compiler = "$pwd/.deps/llvm-mingw/bin/clang++.exe"
+          cmake -S tests/passthrough -B build/passthrough-compile -G Ninja `
+            -DCMAKE_CXX_COMPILER="$compiler" -DVENTURE_PASSTHROUGH_COMPILE_ONLY=ON
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          cmake --build build/passthrough-compile --parallel 2

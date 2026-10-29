@@ -134,6 +134,17 @@ TEST_CASE("Passthrough properties preserve output chains and omit depth capabili
   state().enabled.erase("XR_FB_passthrough");
   CHECK_FALSE(passthrough_properties(reinterpret_cast<XrBaseOutStructure*>(&older)));
 }
+TEST_CASE("Passthrough header erratum accepts native composition extension chains") {
+  Fixture fixture; fixture.create(true);
+  state().enabled.insert("XR_KHR_composition_layer_color_scale_bias");
+  xr::host_xr().enabled_extensions.insert("XR_KHR_composition_layer_color_scale_bias");
+  XrCompositionLayerColorScaleBiasKHR color{XR_TYPE_COMPOSITION_LAYER_COLOR_SCALE_BIAS_KHR,
+      nullptr, {1, 1, 1, 1}, {0, 0, 0, 0}};
+  Frame frame(fixture);
+  frame.room.next = &color;
+  CHECK(validate_passthrough_layer(target, frame.layers[0]) == XR_SUCCESS);
+  CHECK(validate_chain(&color, false, XR_TYPE_PASSTHROUGH_CREATE_INFO_FB) == XR_ERROR_VALIDATION_FAILURE);
+}
 TEST_CASE("Passthrough source intent follows submitted running layers and is revoked on pause") {
   Fixture fixture; fixture.create(); Frame frame(fixture); PassthroughFrame output;
   CHECK(frame.prepare(output) == XR_SUCCESS);
