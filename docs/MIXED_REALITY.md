@@ -5,11 +5,12 @@ This branch connects Quest OpenXR passthrough to
 It targets **Quest games emulated on a Windows PC and displayed on Steam Frame**.
 The Frame supplies its own camera image; camera video never enters Venture.
 
-**Spirit Sling Tabletop is the requested first hardware reference, not a
-verified compatibility result.** Software GPU checks and Windows compilation
-do not establish an end-to-end Spirit Sling/Steam Link/Frame result.
-It must remain experimental until that validation succeeds.
-It does not establish full support for every Quest MR feature or game.
+**The maintainer confirmed working Spirit Sling Tabletop MR display on Steam
+Frame over Steam Link on October 29, 2026.** This is the first hardware result
+for this integration. Dense cloud/effect coverage still causes severe streamed
+image-quality drops; see the bandwidth evidence below. The route remains
+experimental and does not establish full support for every Quest MR feature or
+game, or validate all transitions and failure recovery on hardware.
 
 ## Trying the integration
 
@@ -122,6 +123,17 @@ VrApi passthrough interfaces. Games requiring these need additional work.
 
 ## Validation
 
+The successful user-run Spirit Sling log reports an accepted SBN1 v2 source,
+mostly 90 Hz submissions and zero `xrEndFrame` errors. The accompanying sender
+log also demonstrates a separate bandwidth problem: 11 of 40 logged budget
+samples reduced RGB video to 1 Mbit/s while reserving lossless coverage traffic.
+One later 80-second interval carried approximately 22.66 Mbit/s of original
+video and 123.69 Mbit/s of compressed coverage, calculated from byte-counter
+deltas. These are this test's measurements, not network-capacity guarantees.
+Almost all its masks used RLE/Zstd; encoding overhead was already small compared
+with the compressed masks themselves. Reducing alpha precision, removing effects
+or disabling metadata accounting would not satisfy the intended integration.
+
 The focused fixture builds production lifecycle/chain/stereo/copy/shader code
 against a scripted OpenXR host and source connection, with real Vulkan GPU
 images and pixel readback. Its transport is scripted: it does not execute
@@ -154,8 +166,9 @@ failure and Unity permission-helper calls rejected by the framework's fragment
 thread checks. The Java fix allows background lookups and queued commits as in
 AOSP 12L, while lifecycle execution and `commitNow` still require the UI Looper.
 `framework_fragment_permissions` tests that actual callback path. These are
-identified baseline defects, not proof that every cause of the black picture
-has been removed.
+identified and corrected baseline defects. A later fix also supplies Unity's
+three-argument headless fragment add and ignores disabled projection extension
+nodes, matching the ordinary composition path.
 
 For the Spirit Sling hardware result, record the exact game version, Venture
 revision, PC/Frame companion versions, SteamVR versions, GPU/driver and bitrate.
