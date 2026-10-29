@@ -73,3 +73,21 @@ endif()
 if(MINGW)
   target_link_options(venture-cli PRIVATE -municode)
 endif()
+
+# Focused checks can be built without the game runtime. Excluded from normal
+# builds/packages; the probe drives the real App, SDL renderer and ImGui UI.
+add_executable(venture_launcher_pacing_tests EXCLUDE_FROM_ALL
+  ${PROJECT_SOURCE_DIR}/tests/test_main.cpp
+  ${PROJECT_SOURCE_DIR}/tests/launcher_frame_pacing_test.cpp)
+target_include_directories(venture_launcher_pacing_tests PRIVATE ${PROJECT_SOURCE_DIR}/src)
+target_link_libraries(venture_launcher_pacing_tests PRIVATE doctest::doctest)
+if(NOT WIN32)
+  get_target_property(venture_probe_sources venture SOURCES)
+  list(REMOVE_ITEM venture_probe_sources main.cpp)
+  add_executable(venture_launcher_idle_probe EXCLUDE_FROM_ALL
+    ${PROJECT_SOURCE_DIR}/tests/launcher_idle_probe.cpp ${venture_probe_sources})
+  foreach(property INCLUDE_DIRECTORIES COMPILE_DEFINITIONS LINK_LIBRARIES)
+    get_target_property(value venture ${property})
+    set_property(TARGET venture_launcher_idle_probe PROPERTY ${property} "${value}")
+  endforeach()
+endif()

@@ -7,6 +7,24 @@ on:
 permissions:
   contents: read
 jobs:
+  launcher:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+      - name: Install launcher build dependencies
+        run: sudo apt-get update && sudo apt-get install -y g++-13 ninja-build libssl-dev
+      - name: Configure launcher without game dependencies
+        run: >-
+          cmake -S . -B build/launcher-idle -G Ninja -DCMAKE_BUILD_TYPE=Release
+          -DCMAKE_C_COMPILER=gcc-13 -DCMAKE_CXX_COMPILER=g++-13
+          -DVENTURE_BUILD_RUNTIME=OFF -DVENTURE_BUILD_TESTS=OFF
+          -DSDL_WAYLAND=OFF -DSDL_X11=OFF -DSDL_UNIX_CONSOLE_BUILD=ON
+      - name: Build actual launcher and focused checks
+        run: cmake --build build/launcher-idle --target venture venture_launcher_pacing_tests venture_launcher_idle_probe --parallel 2
+      - name: Test frame scheduling and real UI idle behavior
+        run: |
+          build/launcher-idle/bin/venture_launcher_pacing_tests
+          python3 tests/launcher_idle_test.py build/launcher-idle/bin/venture_launcher_idle_probe
   vulkan:
     runs-on: ubuntu-24.04
     steps:
@@ -82,3 +100,17 @@ jobs:
             -DCMAKE_CXX_COMPILER="$compiler" -DVENTURE_PASSTHROUGH_COMPILE_ONLY=ON
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
           cmake --build build/passthrough-compile --parallel 2
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+      - name: Build Windows launcher without game dependencies
+        shell: pwsh
+        run: |
+          $compilerDir = "$pwd/.deps/llvm-mingw/bin"
+          $env:PATH = "$compilerDir;$env:PATH"
+          cmake -S . -B build/launcher-idle -G Ninja -DCMAKE_BUILD_TYPE=Release `
+            -DCMAKE_C_COMPILER="$compilerDir/clang.exe" -DCMAKE_CXX_COMPILER="$compilerDir/clang++.exe" `
+            -DCMAKE_RC_COMPILER="$compilerDir/llvm-rc.exe" `
+            -DVENTURE_BUILD_RUNTIME=OFF -DVENTURE_BUILD_TESTS=OFF
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          cmake --build build/launcher-idle --target venture venture_launcher_pacing_tests --parallel 2
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          & ./build/launcher-idle/bin/venture_launcher_pacing_tests.exe

@@ -16,6 +16,7 @@ add_executable(venture_tests
   import_test.cpp
   accounts_test.cpp
   launcher_accounts_test.cpp
+  launcher_frame_pacing_test.cpp
 
   ${PROJECT_SOURCE_DIR}/src/launcher/ui/rich_text_parse.cpp
   ${PROJECT_SOURCE_DIR}/src/launcher/debug_report.cpp
