@@ -1,0 +1,47 @@
+name: Passthrough integration
+on:
+  pull_request:
+  push:
+    branches: [feat/steam-link-passthrough]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  vulkan:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+      - name: Install Vulkan software test dependencies
+        run: sudo apt-get update && sudo apt-get install -y g++-13 ninja-build libvulkan-dev mesa-vulkan-drivers glslang-tools
+      - name: Configure focused fixtures
+        run: cmake -S tests/passthrough -B build/passthrough-tests -G Ninja -DCMAKE_BUILD_TYPE=Debug -DCMAKE_CXX_COMPILER=g++-13
+      - name: Build
+        run: cmake --build build/passthrough-tests --parallel 2
+      - name: Test API translation and real GPU pixels
+        env:
+          VK_ICD_FILENAMES: /usr/share/vulkan/icd.d/lvp_icd.x86_64.json
+        run: ctest --test-dir build/passthrough-tests --output-on-failure
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Test Unity fragment permissions
+        run: |
+          python3 - <<'PY'
+          import pathlib, subprocess
+          root = pathlib.Path.cwd()
+          output = root / 'build/fragment-permissions'
+          output.mkdir(parents=True, exist_ok=True)
+          sources = sorted((root / 'src/runtime/java/framework').rglob('*.java'))
+          bridge = root / 'src/runtime/java/bridge/com/venture/runtime'
+          sources += [bridge / 'NativeMethods.java', bridge / 'MethodHooks.java']
+          sources += [root / 'tests/java/FragmentPermissionsTest.java']
+          subprocess.run(['javac', '--release', '21', '-encoding', 'UTF-8', '-d', str(output), *map(str, sources)], check=True)
+          subprocess.run(['java', '-Xverify:all', '-cp', str(output), 'FragmentPermissionsTest'], check=True)
+          PY
+  windows-preview:
+    if: github.repository == 'McFredward/Venture' && github.event_name != 'pull_request'
+    uses: ./.github/workflows/windows.yml
+    with:
+      test: true
+      package: true

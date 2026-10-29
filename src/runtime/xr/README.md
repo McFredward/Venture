@@ -90,8 +90,11 @@ session's real space warp state, so titles render every frame at the host rate.
   before a host without XR_FB_display_refresh_rate shows its first frame, the
   period it reported on the previous launch (data dir `host-displays.json`, per
   runtime and headset) stands in, so games do not start at Android's 90 Hz.
-  Passthrough, space warp, density-map resources and unsupported Meta features
-  are hidden. There are no fabricated sensor-valid flags or successful stubs.
+  Unsupported Meta features are hidden. A64 passthrough is available through a
+  real host extension or the experimental opt-in Steam Link reconstruction
+  backend; see [mixed reality](../../../docs/MIXED_REALITY.md) for its supported
+  layouts, test evidence and hardware validation status. There are no fabricated
+  sensor-valid flags or successful stubs for unavailable camera effects.
 - POSIX platform implementations are present, but no Linux build was run on
   this Windows machine (WSL is not installed).
 

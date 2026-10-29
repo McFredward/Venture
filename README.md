@@ -43,6 +43,13 @@ The **Import** page adds games that aren't in your Meta library:
 - **From a headset:** connect a Quest with developer mode on (USB, or Wi-Fi debugging) and choose **Scan headset**. Nothing on the headset is changed.
 - **From this computer:** choose or drop an APK, a ZIP, or a folder with the APK and its data.
 
+### Experimental mixed reality
+
+This branch includes an opt-in [Steam Link passthrough integration](docs/MIXED_REALITY.md)
+for Quest OpenXR games running on a Windows PC and displayed on Steam Frame.
+Spirit Sling Tabletop is the first hardware validation target; compatibility
+has not yet been established.
+
 ### Play from Steam
 
 Turn on **Add games to Steam** in Settings. Installed games appear in Steam and SteamVR the next time Steam starts.

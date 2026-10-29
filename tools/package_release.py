@@ -298,6 +298,8 @@ def package(build, output, angle, strip, readobj):
         if not windows and name in ("libEGL.so", "libGLESv2.so") and not source.is_file():
             source = angle / "bin" / name
         copy(source, output / name)
+    if windows:
+        copy(ROOT / "data/venture-passthrough.cmd", output / "venture-passthrough.cmd")
     for name in ("LGPL-2.1.txt", "ffmpeg-8.1.3.tar.xz", "ffmpeg-8.1.3.tar.xz.asc"):
         copy(bin_dir / "LICENSES" / name, output / "licenses/ffmpeg" / name)
     copy(bin_dir / "venture-ffmpeg.json", output / "licenses/ffmpeg/venture-ffmpeg.json")
