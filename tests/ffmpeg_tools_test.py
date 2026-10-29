@@ -38,7 +38,8 @@ class GnuPGDiscoveryTest(unittest.TestCase):
         git.touch()
         expected = self.pair(git.parent.parent / "usr/bin")
         with patch.object(ffmpeg.shutil, "which", side_effect=lambda name: str(git) if name == "git" else None):
-            self.assertEqual(ffmpeg.find_gnupg(windows=True), expected)
+            actual = ffmpeg.find_gnupg(windows=True)
+            self.assertEqual(tuple(Path(p).resolve() for p in actual), tuple(Path(p).resolve() for p in expected))
 
     def test_incomplete_pair_cannot_pass(self):
         git = self.root / "Git/cmd/git.exe"
