@@ -26,6 +26,8 @@ jobs:
           ctest --test-dir build/passthrough-tests --output-on-failure
       - name: Test local preview installation
         run: python3 tests/install_preview_test.py
+      - name: Test FFmpeg verifier discovery
+        run: python3 tests/ffmpeg_tools_test.py
       - name: Check Windows installer syntax
         shell: pwsh
         run: |
@@ -52,3 +54,19 @@ jobs:
           subprocess.run(['javac', '--release', '21', '-encoding', 'UTF-8', '-d', str(output), *map(str, sources)], check=True)
           subprocess.run(['java', '-Xverify:all', '-cp', str(output), 'FragmentPermissionsTest'], check=True)
           PY
+  windows-bootstrap:
+    runs-on: windows-2025
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+      - name: Test verifier discovery with Git for Windows
+        shell: powershell
+        run: |
+          python tests/ffmpeg_tools_test.py
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+      - name: Test native logging in Windows PowerShell 5.1
+        shell: powershell
+        run: |
+          .\tests\build_helpers_test.ps1 -PythonPath (Get-Command python.exe).Source

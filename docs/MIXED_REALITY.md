@@ -37,9 +37,13 @@ running Venture/game must be closed before starting the test version.
 
 Use an ordinary Windows terminal. Git for Windows is required; Python 3.13+
 x64 is reused or installed for the current user through WinGet when available.
+FFmpeg verification discovers Git's bundled `gpg`/`gpgv` even when only Git's
+`cmd` directory is on PATH, and also recognizes native GnuPG installations.
 The first build downloads and compiles portable toolchain, JDK, FFmpeg and
 ANGLE dependencies and can take substantially longer than later cached builds.
 The installer keeps its build log under `build/passthrough-install`.
+Build subprocess stdout and stderr are explicitly forwarded into that
+transcript, including Python tracebacks on Windows PowerShell 5.1.
 
 PowerShell options, when needed:
 

@@ -14,12 +14,7 @@ $transcribing = $false
 $originalPath = $env:PATH
 $originalLocation = Get-Location
 
-function Invoke-BuildStep {
-    param([string]$Label, [string]$Executable, [string[]]$Arguments)
-    Write-Host "`n== $Label ==" -ForegroundColor Cyan
-    & $Executable @Arguments
-    if ($LASTEXITCODE -ne 0) { throw "$Label failed (exit $LASTEXITCODE)." }
-}
+. (Join-Path $sourceRoot 'tools\windows\build_helpers.ps1')
 
 function Find-BuildPython {
     $candidates = @()
@@ -102,10 +97,11 @@ try {
         $InstallDir = Join-Path ([Environment]::GetFolderPath('LocalApplicationData')) 'Venture-Passthrough'
     }
     $layout = Join-Path $sourceRoot 'dist\Venture-win64'
-    Write-Host "`n== Install verified test build ==" -ForegroundColor Cyan
-    $receipt = & $python 'tools/packaging/install_preview.py' '--layout' $layout '--install-root' $InstallDir '--revision' $revision
-    if ($LASTEXITCODE -ne 0) { throw 'Installing the packaged build failed; the previous test build remains available.' }
-    $installed = ($receipt | ConvertFrom-Json).directory
+    Invoke-BuildStep 'Install verified test build' $python @(
+        'tools/packaging/install_preview.py', '--layout', $layout, '--install-root', $InstallDir, '--revision', $revision
+    )
+    $receiptPath = Join-Path $InstallDir 'current.json'
+    $installed = (Get-Content -LiteralPath $receiptPath -Raw | ConvertFrom-Json).directory
     $starter = Join-Path $installed 'venture-passthrough.cmd'
 
     $shell = New-Object -ComObject WScript.Shell
