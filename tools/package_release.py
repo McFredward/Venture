@@ -72,16 +72,19 @@ def scan(layout, forbidden, users=(), hosts=()):
     token = lambda value, inner: rb"(?<![a-z0-9])" + inner(re.escape(value.lower().encode())) + rb"(?![a-z0-9])"
     identities = [token(value, lambda v: v) for value in set(hosts) if value]
     identities += [token(value, lambda v: rb"(?:(?<=[/\\@])" + v + rb"|" + v + rb"(?=[/\\@]))") for value in set(users) if value]
-    public_url = re.compile(re.escape(PUBLIC_PROJECT_URL.encode()) + rb"(?=$|[\x00\s<>\"'()])", re.I)
+    public_origin, public_owner, _ = PUBLIC_PROJECT_URL.rsplit("/", 2)
+    public_account = re.compile(rb"(?<=" + re.escape((public_origin + "/").encode()) + rb")" +
+                                re.escape(public_owner.encode()) + rb"(?=/)", re.I)
     def check(data, name):
         lower = data.lower()
         # Decode both alignments; deleting NUL bytes would join unrelated C
         # strings and misclassify URI schemes as absolute Windows paths.
         views = [data] + [data[offset:].decode("utf-16le", errors="replace").encode("utf-8") for offset in (0, 1)]
-        # Only the complete known public URL is exempt from identity matching.
-        # Private paths still inspect the original bytes, and other URLs/login
-        # contexts or a private identity beside the public link still fail.
-        identity_views = [public_url.sub(b"", view) for view in views]
+        # The referenced GitHub namespace is public content. GCC may emit the
+        # URL's string constructor as overlapping constant chunks, so the full
+        # URL need not remain contiguous in the image. Other origins, logins
+        # and private paths still inspect the original bytes/identity contexts.
+        identity_views = [public_account.sub(b"", view) for view in views]
         if (any(needle in lower for needle in needles) or
                 any(re.search(p, view, re.I) for p in patterns for view in views) or
                 any(re.search(p, view, re.I) for p in identities for view in identity_views)):

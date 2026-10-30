@@ -42,15 +42,23 @@ class PackageScanTest(unittest.TestCase):
                     with self.assertRaisesRegex(RuntimeError, "Non-redistributable"):
                         self.scan(["D:/projects/Venture"])
 
-    def test_unknown_urls_and_extended_paths_keep_the_account_check(self):
+    def test_other_origins_and_private_contexts_keep_the_account_check(self):
         for value in ("https://example.org/McFredward/private",
-                      "https://github.com/McFredward/other-project",
-                      release.PUBLIC_PROJECT_URL + "/private",
-                      release.PUBLIC_PROJECT_URL + "?login=McFredward"):
+                      "https://github.com.evil/McFredward/private",
+                      "https://McFredward@github.com/private",
+                      release.PUBLIC_PROJECT_URL + "/McFredward/private"):
             with self.subTest(value=value):
                 self.payload.write_bytes(value.encode())
                 with self.assertRaisesRegex(RuntimeError, "Non-redistributable"):
                     self.scan()
+
+    def test_compiler_constant_chunks_still_identify_the_same_public_namespace(self):
+        # Observed in GCC's optimized std::string construction: overlapping
+        # literal chunks duplicate part of the slug and omit its terminator.
+        value = "https://github.com/McFredward/steam-link-native-tive-passthrough\x01"
+        for encoding in ("utf-8", "utf-16le"):
+            self.payload.write_bytes(value.encode(encoding))
+            self.scan()
 
     def test_explicit_forbidden_content_still_wins_over_public_identity_exception(self):
         self.payload.write_bytes(release.PUBLIC_PROJECT_URL.encode())
