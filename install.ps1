@@ -1,4 +1,4 @@
-# Build the checked-out fork and update one fixed MR test installation.
+# Build the checked-out project and update the local installation.
 # Windows PowerShell 5.1 and PowerShell 7; no administrator session required.
 [CmdletBinding()]
 param(

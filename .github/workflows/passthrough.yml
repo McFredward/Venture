@@ -59,7 +59,7 @@ jobs:
           $parseErrors = $null
           $parseTokens = $null
           [System.Management.Automation.Language.Parser]::ParseFile(
-            "$pwd/install-passthrough.ps1", [ref]$parseTokens, [ref]$parseErrors) > $null
+            "$pwd/install.ps1", [ref]$parseTokens, [ref]$parseErrors) > $null
           if ($parseErrors.Count) { $parseErrors | Format-List; exit 1 }
       - uses: actions/setup-java@v4
         with:

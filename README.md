@@ -62,6 +62,18 @@ If a game crashes, click **Report issue** on the banner that appears. Otherwise,
 
 ### Build (Windows)
 
+To build and install the checked-out project, run:
+
+```powershell
+.\install.cmd
+```
+
+This prepares the dependencies, builds Venture and updates the local installation.
+Later runs reuse the compiler and dependency caches. Options such as `-Jobs 4`,
+`-NoLaunch` and `-InstallDir` are forwarded to `install.ps1`.
+
+For a manual build:
+
 ```sh
 python tools/bootstrap.py --jdk --angle      # pinned toolchain, JDK and ANGLE into .deps/
 .deps/cmake/bin/cmake --preset windows-release

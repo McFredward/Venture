@@ -34,7 +34,7 @@ For each test update, pull and run the installer from the checkout:
 
 ```powershell
 git pull --ff-only
-.\install-passthrough.cmd
+.\install.cmd
 ```
 
 It prepares the project's pinned build dependencies, compiles the current
@@ -68,7 +68,7 @@ junctions are refused before cleanup.
 PowerShell options, when needed:
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\install-passthrough.ps1 -Jobs 4 -NoLaunch
+powershell -NoProfile -ExecutionPolicy Bypass -File .\install.ps1 -Jobs 4 -NoLaunch
 ```
 
 `-InstallDir` selects a separate preview root. Files are checked and replaced
