@@ -27,6 +27,8 @@ jobs:
           build/launcher-idle/bin/venture_launcher_settings_tests
           python3 tests/launcher_settings_test.py build/launcher-idle/bin/venture-cli
           python3 tests/launcher_idle_test.py build/launcher-idle/bin/venture_launcher_idle_probe
+      - name: Scan actual Linux launcher for shipping paths and identities
+        run: python3 tests/package_scan_test.py --launcher build/launcher-idle/bin/venture --strip strip
   vulkan:
     runs-on: ubuntu-24.04
     steps:
@@ -48,6 +50,7 @@ jobs:
         run: |
           python3 tests/install_preview_test.py
           python3 tests/preview_package_test.py
+          python3 tests/package_scan_test.py
       - name: Test FFmpeg verifier discovery
         run: python3 tests/ffmpeg_tools_test.py
       - name: Check Windows installer syntax
@@ -94,6 +97,8 @@ jobs:
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
           python tests/preview_package_test.py
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          python tests/package_scan_test.py
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
       - name: Test native logging in Windows PowerShell 5.1
         shell: powershell
         run: |
@@ -126,3 +131,6 @@ jobs:
           python tests/launcher_settings_test.py ./build/launcher-idle/bin/venture-cli.exe
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
           & ./build/launcher-idle/bin/venture_launcher_pacing_tests.exe
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+      - name: Scan actual Windows launcher for shipping paths and identities
+        run: python tests/package_scan_test.py --launcher build/launcher-idle/bin/venture.exe --strip .deps/llvm-mingw/bin/llvm-strip.exe

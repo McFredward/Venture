@@ -37,6 +37,9 @@ ANGLE_NOTICES = ("third_party/abseil-cpp/", "third_party/astc-encoder/src/LICENS
                  "third_party/vulkan-headers/src/LICENSE.md", "third_party/vulkan_memory_allocator/LICENSE.txt", "third_party/zlib/",
                  "third_party/perfetto/LICENSE", "src/third_party/volk/")
 
+# Intentional product content: its GitHub owner may also be the build account.
+PUBLIC_PROJECT_URL = "https://github.com/McFredward/steam-link-native-passthrough"
+
 
 def copy(source, target):
     if not source.is_file():
@@ -67,14 +70,21 @@ def scan(layout, forbidden, users=(), hosts=()):
                 rb"(?<![:/\\a-zA-Z0-9])/(?:home|Users)/[^/\x00\s]+/",
                 drive + rb"[^\x00\r\n]{0,512}[/\\](?:build|src|source|_work|out|\.deps)[/\\]"]
     token = lambda value, inner: rb"(?<![a-z0-9])" + inner(re.escape(value.lower().encode())) + rb"(?![a-z0-9])"
-    patterns += [token(value, lambda v: v) for value in set(hosts) if value]
-    patterns += [token(value, lambda v: rb"(?:(?<=[/\\@])" + v + rb"|" + v + rb"(?=[/\\@]))") for value in set(users) if value]
+    identities = [token(value, lambda v: v) for value in set(hosts) if value]
+    identities += [token(value, lambda v: rb"(?:(?<=[/\\@])" + v + rb"|" + v + rb"(?=[/\\@]))") for value in set(users) if value]
+    public_url = re.compile(re.escape(PUBLIC_PROJECT_URL.encode()) + rb"(?=$|[\x00\s<>\"'()])", re.I)
     def check(data, name):
         lower = data.lower()
         # Decode both alignments; deleting NUL bytes would join unrelated C
         # strings and misclassify URI schemes as absolute Windows paths.
         views = [data] + [data[offset:].decode("utf-16le", errors="replace").encode("utf-8") for offset in (0, 1)]
-        if any(needle in lower for needle in needles) or any(re.search(p, view, re.I) for p in patterns for view in views):
+        # Only the complete known public URL is exempt from identity matching.
+        # Private paths still inspect the original bytes, and other URLs/login
+        # contexts or a private identity beside the public link still fail.
+        identity_views = [public_url.sub(b"", view) for view in views]
+        if (any(needle in lower for needle in needles) or
+                any(re.search(p, view, re.I) for p in patterns for view in views) or
+                any(re.search(p, view, re.I) for p in identities for view in identity_views)):
             raise RuntimeError("Non-redistributable path or identity in " + name)
     for path in sorted(layout.rglob("*")):
         if not path.is_file():

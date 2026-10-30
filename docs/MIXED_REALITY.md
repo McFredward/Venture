@@ -197,6 +197,12 @@ the actual runtime selector with a scripted SteamVR host: a saved off remains
 off with the old startup variable present, and saved on works with it absent
 or set to 0. A32 and other runtimes still refuse the Steam Link backend.
 The real settings command is also exercised across fresh launcher processes.
+Shipping scanner checks use the actual stripped Windows/Linux launcher with
+`McFredward` as the build account. The complete public companion project URL
+in the Info control is intentional product content, even when its GitHub owner
+matches the Windows account. Only that known URL is exempt from identity
+matching; source/home paths, private logins, hostnames and other URLs remain
+checked, including in UTF-16 strings and compressed JAR entries.
 The dedicated workflow runs these tests
 on Mesa's software Vulkan driver on forks as well as upstream PRs.
 Its Windows job also compiles the affected production XR sources with the
