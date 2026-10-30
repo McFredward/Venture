@@ -45,7 +45,9 @@ jobs:
           test -n "$VK_DRIVER_FILES"
           ctest --test-dir build/passthrough-tests --output-on-failure
       - name: Test local preview installation
-        run: python3 tests/install_preview_test.py
+        run: |
+          python3 tests/install_preview_test.py
+          python3 tests/preview_package_test.py
       - name: Test FFmpeg verifier discovery
         run: python3 tests/ffmpeg_tools_test.py
       - name: Check Windows installer syntax
@@ -87,7 +89,11 @@ jobs:
           python tests/ffmpeg_tools_test.py
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
       - name: Test in-place preview updates and legacy cleanup
-        run: python tests/install_preview_test.py
+        run: |
+          python tests/install_preview_test.py
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          python tests/preview_package_test.py
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
       - name: Test native logging in Windows PowerShell 5.1
         shell: powershell
         run: |

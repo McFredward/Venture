@@ -11,6 +11,7 @@ Set-StrictMode -Version 2.0
 $ErrorActionPreference = 'Stop'
 $sourceRoot = $PSScriptRoot
 $transcribing = $false
+$packageOutputPrepared = $false
 $originalPath = $env:PATH
 $originalLocation = Get-Location
 
@@ -88,6 +89,8 @@ try {
     $cmake = Join-Path $sourceRoot '.deps\cmake\bin\cmake.exe'
     $ctest = Join-Path $sourceRoot '.deps\cmake\bin\ctest.exe'
     Invoke-BuildStep 'Configure Venture' $cmake @('--preset', 'windows-release', '-DVENTURE_BUILD_TESTS=ON', '-DVENTURE_AGENT_CACHE=ON')
+    Invoke-BuildStep 'Prepare clean release package' $python @('tools/packaging/clean_preview_package.py')
+    $packageOutputPrepared = $true
     Invoke-BuildStep 'Compile and package Venture' $cmake @('--build', '--preset', 'windows-release', '--parallel', [string]$Jobs,
         '--target', 'package-release', 'venture_framework_tests')
     Invoke-BuildStep 'Check OpenXR metadata and Unity permissions' $ctest @('--preset', 'windows-release',
@@ -132,6 +135,13 @@ try {
     if (Get-Variable logPath -ErrorAction SilentlyContinue) { Write-Host "Build log: $logPath" }
     exit 1
 } finally {
+    if ($packageOutputPrepared) {
+        try {
+            Invoke-BuildStep 'Remove generated release package' $python @((Join-Path $sourceRoot 'tools\packaging\clean_preview_package.py'))
+        } catch {
+            Write-Host "Could not remove the generated release package: $($_.Exception.Message)" -ForegroundColor Yellow
+        }
+    }
     $env:PATH = $originalPath
     Set-Location -LiteralPath $originalLocation.Path
     if ($transcribing) { Stop-Transcript | Out-Null }

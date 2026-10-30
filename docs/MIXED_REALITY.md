@@ -58,6 +58,12 @@ ANGLE dependencies and can take substantially longer than later cached builds.
 The installer keeps its build log under `build/passthrough-install`.
 Build subprocess stdout and stderr are explicitly forwarded into that
 transcript, including Python tracebacks on Windows PowerShell 5.1.
+Before packaging, the installer removes its generated `dist/Venture-win64`
+layout so an incomplete package without a release manifest cannot block a retry.
+It also removes that layout on completion or failure to avoid retaining another
+copy of the installation. Compiler output and dependency caches are retained;
+later builds compile only affected sources. Redirected paths and directory
+junctions are refused before cleanup.
 
 PowerShell options, when needed:
 
