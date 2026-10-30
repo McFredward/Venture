@@ -47,8 +47,8 @@ The **Import** page adds games that aren't in your Meta library:
 
 This branch includes an opt-in [Steam Link passthrough integration](docs/MIXED_REALITY.md)
 for Quest OpenXR games running on a Windows PC and displayed on Steam Frame.
-Spirit Sling Tabletop is the first hardware validation target; compatibility
-has not yet been established.
+Spirit Sling Tabletop has been tested on Steam Frame; other games and MR
+features still require validation.
 
 ### Play from Steam
 

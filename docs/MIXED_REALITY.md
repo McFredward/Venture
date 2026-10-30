@@ -7,10 +7,19 @@ The Frame supplies its own camera image; camera video never enters Venture.
 
 **The maintainer confirmed working Spirit Sling Tabletop MR display on Steam
 Frame over Steam Link on October 29, 2026.** This is the first hardware result
-for this integration. Dense cloud/effect coverage still causes severe streamed
-image-quality drops; see the bandwidth evidence below. The route remains
+for this integration. An October30 follow-up using companion release0.3.15
+reported improved clarity/smoothness and lower mask decode/queue times.
+Occasional rain/compression spikes remain; see the versioned evidence below. The route remains
 experimental and does not establish full support for every Quest MR feature or
 game, or validate all transitions and failure recovery on hardware.
+
+## Upstream baseline
+
+The branch is rebased onto upstream Venture **0.1.1.1**, commit `60337c8`.
+The twelve existing implementation/fix commits retain identical patches after
+rebase. The headset observations below were made before this upstream update;
+they are not a new headset certification of the rebased build. Current automated
+checks cover the rebased source; repeat Spirit Sling on hardware after installing it.
 
 ## Trying the integration
 
@@ -123,6 +132,26 @@ VrApi passthrough interfaces. Games requiring these need additional work.
 
 ## Validation
 
+### October30 companion follow-up
+
+The maintainer reports a perceived improvement with Steam Link Native Passthrough
+**0.3.15 / PC0.3.11 / Frame0.3.5**. Read-only Frame hashes confirm that exact
+receiver/decoder pair. All15,876 masks decode/upload and actual within-picture
+slice jobs are present. Mean mask worker time falls12.646→11.259ms and queue
+mean8.032→4.924ms; focused-game RGB QP>=40 share falls8.73%→1.24% compared with
+the preceding0.3.14 run. These different source scenes/durations support the
+perception but do not isolate a causal quality gain. Coded extent stays1152x4608;
+peak decoder time and occasional compression/transport events remain.
+
+The companion now defaults to negotiated lossy temporal HEVC masks; the
+maintainer authorized that separate quality tradeoff after the original lossless
+run below. Venture continues to provide genuine same-eye alpha. It does not
+encode the mask itself, lower eye resolution, remove effects or bypass exact
+image/camera/Ready checks. Explicit lossless preferences remain available in the
+companion. See its [current release evidence](https://github.com/McFredward/steam-link-native-passthrough/blob/main/docs/development/RELEASE-0.3.15.md).
+
+### Initial October29 lossless observation
+
 The successful user-run Spirit Sling log reports an accepted SBN1 v2 source,
 mostly 90 Hz submissions and zero `xrEndFrame` errors. The accompanying sender
 log also demonstrates a separate bandwidth problem: 11 of 40 logged budget
@@ -132,7 +161,8 @@ video and 123.69 Mbit/s of compressed coverage, calculated from byte-counter
 deltas. These are this test's measurements, not network-capacity guarantees.
 Almost all its masks used RLE/Zstd; encoding overhead was already small compared
 with the compressed masks themselves. Reducing alpha precision, removing effects
-or disabling metadata accounting would not satisfy the intended integration.
+or disabling metadata accounting was not accepted as a fix at that checkpoint.
+The later explicit authorization for lossy HEVC masks is described above.
 
 The focused fixture builds production lifecycle/chain/stereo/copy/shader code
 against a scripted OpenXR host and source connection, with real Vulkan GPU
