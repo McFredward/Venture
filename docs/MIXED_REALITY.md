@@ -15,11 +15,18 @@ game, or validate all transitions and failure recovery on hardware.
 
 ## Upstream baseline
 
-The branch is rebased onto upstream Venture **0.1.1.1**, commit `60337c8`.
-The twelve existing implementation/fix commits retain identical patches after
-rebase. The headset observations below were made before this upstream update;
-they are not a new headset certification of the rebased build. Current automated
-checks cover the rebased source; repeat Spirit Sling on hardware after installing it.
+The branch is rebased onto upstream Venture **0.1.1.1**, commit `cfdad78`
+(October 30, 2026), including the Space Pirate Trainer DX startup fixes for
+fragment threading and VoIP exports. Shared fragment changes are merged with
+the Steam Frame integration: deferred commits remain callable from Unity's
+render thread, lifecycle execution remains on the UI Looper, and headless
+fragments accept named containers. Invalid `View.NO_ID` values remain rejected.
+
+The headset observations below precede this upstream update. The latest Windows
+build and installation were confirmed before this rebase; they are not a new
+headset validation of the rebased build. Automated checks cover both the
+upstream framework behavior and Spirit Sling's permission callbacks. Repeat
+Spirit Sling on hardware after installing the rebased build.
 
 ## Trying the integration
 

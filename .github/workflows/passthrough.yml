@@ -65,7 +65,7 @@ jobs:
         with:
           distribution: temurin
           java-version: '21'
-      - name: Test Unity fragment permissions
+      - name: Test framework behavior and Unity fragment permissions
         run: |
           python3 - <<'PY'
           import pathlib, subprocess
@@ -75,9 +75,11 @@ jobs:
           sources = sorted((root / 'src/runtime/java/framework').rglob('*.java'))
           bridge = root / 'src/runtime/java/bridge/com/venture/runtime'
           sources += [bridge / 'NativeMethods.java', bridge / 'MethodHooks.java']
-          sources += [root / 'tests/java/FragmentPermissionsTest.java']
+          sources += [root / 'tests/java' / name for name in
+                      ('FragmentPermissionsTest.java', 'FrameworkTest.java', 'RecordingHost.java', 'TestNatives.java')]
           subprocess.run(['javac', '--release', '21', '-encoding', 'UTF-8', '-d', str(output), *map(str, sources)], check=True)
-          subprocess.run(['java', '-Xverify:all', '-cp', str(output), 'FragmentPermissionsTest'], check=True)
+          for test in ('FragmentPermissionsTest', 'FrameworkTest'):
+              subprocess.run(['java', '-Xverify:all', '-cp', str(output), test], check=True)
           PY
   windows-bootstrap:
     runs-on: windows-2025
