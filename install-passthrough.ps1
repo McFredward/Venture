@@ -104,14 +104,14 @@ try {
     )
     $receiptPath = Join-Path $InstallDir 'current.json'
     $installed = (Get-Content -LiteralPath $receiptPath -Raw | ConvertFrom-Json).directory
-    $starter = Join-Path $installed 'venture-passthrough.cmd'
+    $starter = Join-Path $installed 'venture.exe'
 
     $shell = New-Object -ComObject WScript.Shell
     $desktop = [Environment]::GetFolderPath('DesktopDirectory')
     if (-not [string]::IsNullOrWhiteSpace($desktop) -and (Test-Path -LiteralPath $desktop)) {
         $shortcut = $shell.CreateShortcut((Join-Path $desktop 'Venture Passthrough.lnk'))
-        $shortcut.TargetPath = Join-Path $env:SystemRoot 'System32\cmd.exe'
-        $shortcut.Arguments = '/d /c ""' + $starter + '""'
+        $shortcut.TargetPath = $starter
+        $shortcut.Arguments = ''
         $shortcut.WorkingDirectory = $installed
         $shortcut.IconLocation = (Join-Path $installed 'venture.exe') + ',0'
         $shortcut.Save()
@@ -123,7 +123,7 @@ try {
         if ($running.Count -gt 0) {
             Write-Host 'Close the running Venture/game, then use the Venture Passthrough desktop shortcut.'
         } else {
-            Start-Process -FilePath (Join-Path $env:SystemRoot 'System32\cmd.exe') -ArgumentList ('/d /c ""' + $starter + '""') -WorkingDirectory $installed
+            Start-Process -FilePath $starter -WorkingDirectory $installed
         }
     }
     Write-Host "Build log: $logPath"

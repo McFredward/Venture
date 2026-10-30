@@ -76,7 +76,7 @@ void forget_menu_object(std::uintptr_t) {}
 Session& session() { static Session value; return value; }
 void Session::finish_host_end() {}
 XrImages* xr_images() { return nullptr; }
-bool steam_link_passthrough_configured() { return test::passthrough::configured && process_config().isa() == GuestIsa::a64; }
+bool steam_link_passthrough_configured() { return test::passthrough::configured && process_config().steam_frame_passthrough && process_config().isa() == GuestIsa::a64; }
 struct SteamLinkSource::Impl { std::uint64_t lease = 0; };
 SteamLinkSource::SteamLinkSource() : impl_(std::make_unique<Impl>()) {}
 SteamLinkSource::~SteamLinkSource() { test::passthrough::requested = false; }
@@ -156,6 +156,7 @@ using namespace hle::openxr;
 Fixture::Fixture() {
   configured = true; requested = grant = false; requests = native_creates = native_destroys = 0; native_result = XR_SUCCESS;
   process_config().abi = "arm64-v8a";
+  process_config().steam_frame_passthrough = true;
   state().enabled = {"XR_FB_passthrough", "XR_FB_composition_layer_image_layout"};
   track_handle(target, "XrSession", reinterpret_cast<XrInstance>(1)); track_handle(space, "XrSpace", target);
   auto& gpu = gfx::gpu_device();

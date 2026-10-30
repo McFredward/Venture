@@ -44,8 +44,9 @@ and installs a verified portable build directly in
 previous builds are not retained. The next installation also removes the older
 installer-created builds from its `versions` subdirectory before copying files,
 freeing their disk space for the update.
-The `Venture Passthrough` desktop shortcut starts the build with the experimental
-setting; it uses the normal Venture game library. Close Venture and its game
+The `Venture Passthrough` desktop shortcut opens the normal launcher; it uses
+the normal Venture game library and saved settings. Enable the feature under
+**Settings → Runtime → Steam Frame passthrough**. Close Venture and its game
 before running the installer.
 
 Use an ordinary Windows terminal. Git for Windows is required; Python 3.13+
@@ -75,13 +76,12 @@ Venture installation, shared game library and build caches are retained.
    installer. Its supported host route requires Windows x64, NVIDIA, HEVC and
    Steam Frame over Steam Link. This patch does not install or modify companions.
 3. Select SteamVR as the active OpenXR runtime and start the Steam Link session.
-4. Close Venture, then use the packaged `venture-passthrough.cmd` or start it
-   from PowerShell with the experimental setting:
-
-   ```powershell
-   $env:VENTURE_STEAM_LINK_PASSTHROUGH = '1'
-   & '.\venture.exe'
-   ```
+4. Open Venture normally and enable **Settings → Runtime → Steam Frame passthrough**.
+   The adjacent **Info** button identifies Steam Frame as the only target,
+   explains the companion requirement and opens its GitHub project.
+   The preference is saved in Venture's normal `settings.json` and is read once
+   before the next game's XR initialization. It applies to UI and Steam launches;
+   no special startup command or environment setting is required.
 
 5. Launch the Quest build of Spirit Sling Tabletop and enable its MR mode.
    The first submitted pair remains opaque until the companion grants the
@@ -94,8 +94,10 @@ Sling, collect `runtime-com.meta.spiritsling.log`, its `.console.log` counterpar
 and `launcher.log` after the test. A correctly enabled Steam Link backend logs
 `Create passthrough: backend=Steam Link` when the game creates its feature.
 
-Remove the environment variable and restart Venture to disable the experimental
-Steam Link backend. Hosts offering native `XR_FB_passthrough` use their own
+Turn off **Steam Frame passthrough** and restart the game to disable this
+Steam Link backend. Running games retain their startup preference. The old
+startup variable no longer selects the backend, including through old shortcuts.
+Hosts offering native `XR_FB_passthrough` use their own
 implementation without this setting. A32 guests do not expose these APIs yet.
 
 ## Implemented boundary
@@ -183,7 +185,13 @@ The fixture checks SBN1 positive/negative/malformed records, native forwarding,
 capability filtering, null passthrough spaces, lifecycle, actual stereo slice
 separation, UNORM/sRGB pixel preservation, straight/fractional/additive alpha,
 opacity, unavailable/revoked grants, MR-to-VR transitions and unsupported layouts.
-Registry regeneration is checked too. The dedicated workflow runs these tests
+Registry regeneration is checked too. Saved preferences are tested for default-off,
+strict boolean parsing and repeated on/off round trips. Native Windows tests call
+the actual runtime selector with a scripted SteamVR host: a saved off remains
+off with the old startup variable present, and saved on works with it absent
+or set to 0. A32 and other runtimes still refuse the Steam Link backend.
+The real settings command is also exercised across fresh launcher processes.
+The dedicated workflow runs these tests
 on Mesa's software Vulkan driver on forks as well as upstream PRs.
 Its Windows job also compiles the affected production XR sources with the
 project's pinned LLVM-MinGW/libc++ toolchain and `VK_NO_PROTOTYPES`, without

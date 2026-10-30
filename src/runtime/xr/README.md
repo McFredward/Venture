@@ -91,8 +91,11 @@ session's real space warp state, so titles render every frame at the host rate.
   period it reported on the previous launch (data dir `host-displays.json`, per
   runtime and headset) stands in, so games do not start at Android's 90 Hz.
   Unsupported Meta features are hidden. A64 passthrough is available through a
-  real host extension or the experimental opt-in Steam Link reconstruction
-  backend; see [mixed reality](../../../docs/MIXED_REALITY.md) for its supported
+  real host extension or the experimental Steam Link reconstruction backend
+  selected in **Settings → Runtime → Steam Frame passthrough**. `configure_game`
+  snapshots that saved default-off preference before XR initialization; no file
+  I/O or environment lookup occurs in the frame-time selector. See
+  [mixed reality](../../../docs/MIXED_REALITY.md) for its supported
   layouts, test evidence and hardware validation status. There are no fabricated
   sensor-valid flags or successful stubs for unavailable camera effects.
 - POSIX platform implementations are present, but no Linux build was run on

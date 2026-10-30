@@ -20,10 +20,12 @@ jobs:
           -DVENTURE_BUILD_RUNTIME=OFF -DVENTURE_BUILD_TESTS=OFF
           -DSDL_WAYLAND=OFF -DSDL_X11=OFF -DSDL_UNIX_CONSOLE_BUILD=ON
       - name: Build actual launcher and focused checks
-        run: cmake --build build/launcher-idle --target venture venture_launcher_pacing_tests venture_launcher_idle_probe --parallel 2
+        run: cmake --build build/launcher-idle --target venture venture-cli venture_launcher_settings_tests venture_launcher_pacing_tests venture_launcher_idle_probe --parallel 2
       - name: Test frame scheduling and real UI idle behavior
         run: |
           build/launcher-idle/bin/venture_launcher_pacing_tests
+          build/launcher-idle/bin/venture_launcher_settings_tests
+          python3 tests/launcher_settings_test.py build/launcher-idle/bin/venture-cli
           python3 tests/launcher_idle_test.py build/launcher-idle/bin/venture_launcher_idle_probe
   vulkan:
     runs-on: ubuntu-24.04
@@ -111,6 +113,10 @@ jobs:
             -DCMAKE_RC_COMPILER="$compilerDir/llvm-rc.exe" `
             -DVENTURE_BUILD_RUNTIME=OFF -DVENTURE_BUILD_TESTS=OFF
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
-          cmake --build build/launcher-idle --target venture venture_launcher_pacing_tests --parallel 2
+          cmake --build build/launcher-idle --target venture venture-cli venture_launcher_settings_tests venture_launcher_pacing_tests --parallel 2
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          & ./build/launcher-idle/bin/venture_launcher_settings_tests.exe
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          python tests/launcher_settings_test.py ./build/launcher-idle/bin/venture-cli.exe
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
           & ./build/launcher-idle/bin/venture_launcher_pacing_tests.exe

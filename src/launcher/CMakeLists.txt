@@ -91,3 +91,15 @@ if(NOT WIN32)
     set_property(TARGET venture_launcher_idle_probe PROPERTY ${property} "${value}")
   endforeach()
 endif()
+
+# Settings persistence checks need no game runtime or headset.
+add_executable(venture_launcher_settings_tests EXCLUDE_FROM_ALL
+  ${PROJECT_SOURCE_DIR}/tests/test_main.cpp
+  ${PROJECT_SOURCE_DIR}/tests/launcher_settings_test.cpp)
+target_link_libraries(venture_launcher_settings_tests PRIVATE venture_common doctest::doctest)
+if(WIN32)
+  target_sources(venture_launcher_settings_tests PRIVATE
+    ${PROJECT_SOURCE_DIR}/src/runtime/xr/steam_link.cpp
+    ${PROJECT_SOURCE_DIR}/src/runtime/core/device_identity.cpp)
+  target_include_directories(venture_launcher_settings_tests PRIVATE ${PROJECT_SOURCE_DIR}/src/runtime)
+endif()

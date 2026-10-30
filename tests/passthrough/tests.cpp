@@ -85,6 +85,19 @@ TEST_CASE("Passthrough capabilities require a real backend and A64 layouts") {
   CHECK_FALSE(capabilities().contains("XR_FB_passthrough"));
   process_config().abi = "arm64-v8a";
 }
+TEST_CASE("Saved Steam Frame opt-out withholds the emulated passthrough API") {
+  Fixture fixture;
+  REQUIRE(capabilities().contains("XR_FB_passthrough"));
+  process_config().steam_frame_passthrough = false;
+  CHECK_FALSE(capabilities().contains("XR_FB_passthrough"));
+  XrPassthroughCreateInfoFB create{XR_TYPE_PASSTHROUGH_CREATE_INFO_FB};
+  XrPassthroughFB feature{};
+  CHECK(guest::xrCreatePassthroughFB(target, &create, &feature) == XR_ERROR_FEATURE_UNSUPPORTED);
+  CHECK_FALSE(requested);
+  // A native host capability remains independent of this Steam Frame option.
+  fixture.create(true);
+  CHECK(capabilities().contains("XR_FB_passthrough"));
+}
 TEST_CASE("Passthrough lifecycle validates handles and refuses unimplemented camera effects") {
   Fixture fixture; fixture.create();
   CHECK_FALSE(requested);
