@@ -1,3 +1,4 @@
+add_test(NAME preview_installation COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/install_preview_test.py)
 # Source names are remapped for release builds; fixtures are executable-relative.
 configure_file("${CMAKE_CURRENT_SOURCE_DIR}/data/required_rule_catalog.json"
   "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/test-data/required_rule_catalog.json" COPYONLY)
