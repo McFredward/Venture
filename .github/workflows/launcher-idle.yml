@@ -1,0 +1,27 @@
+name: Launcher idle
+on:
+  pull_request:
+  push:
+    branches: [feat/launcher-idle]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  launcher:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+      - name: Install launcher build dependencies
+        run: sudo apt-get update && sudo apt-get install -y g++-13 ninja-build libssl-dev
+      - name: Configure launcher without game dependencies
+        run: >-
+          cmake -S . -B build/launcher-idle -G Ninja -DCMAKE_BUILD_TYPE=Release
+          -DCMAKE_C_COMPILER=gcc-13 -DCMAKE_CXX_COMPILER=g++-13
+          -DVENTURE_BUILD_RUNTIME=OFF -DVENTURE_BUILD_TESTS=OFF
+          -DSDL_WAYLAND=OFF -DSDL_X11=OFF -DSDL_UNIX_CONSOLE_BUILD=ON
+      - name: Build actual launcher and focused checks
+        run: cmake --build build/launcher-idle --target venture venture-cli venture_launcher_pacing_tests venture_launcher_idle_probe --parallel 2
+      - name: Test frame scheduling and real UI idle behavior
+        run: |
+          build/launcher-idle/bin/venture_launcher_pacing_tests
+          python3 tests/launcher_idle_test.py build/launcher-idle/bin/venture_launcher_idle_probe
