@@ -93,6 +93,8 @@ struct Settings {
   int texture_compression_threshold = 50;
   // Games that download at once (Settings > Library); one by default.
   int parallel_downloads = 1;
+  // Steam Frame over Steam Link, applied when the next game starts.
+  bool steam_frame_passthrough = false;
   bool runtime_override() const;
   // `games` first, then the other library folders.
   std::vector<fs::path> roots() const;
