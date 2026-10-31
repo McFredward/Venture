@@ -1,0 +1,30 @@
+name: Unity fragment permissions
+on:
+  pull_request:
+  push:
+    branches: [fix/unity-fragment-permissions]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  java:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Compile production framework and test permission callbacks
+        run: |
+          python3 - <<'PYJAVA'
+          import pathlib, subprocess
+          root=pathlib.Path.cwd();out=root/'build/fragments';out.mkdir(parents=True)
+          sources=sorted((root/'src/runtime/java/framework').rglob('*.java'))
+          bridge=root/'src/runtime/java/bridge/com/venture/runtime'
+          sources += [bridge/'NativeMethods.java',bridge/'MethodHooks.java']
+          sources += [root/'tests/java'/n for n in ('FragmentPermissionsTest.java','FrameworkTest.java','RecordingHost.java','TestNatives.java')]
+          subprocess.run(['javac','--release','21','-d',str(out),*map(str,sources)],check=True)
+          for name in ('FragmentPermissionsTest','FrameworkTest'):
+              subprocess.run(['java','-Xverify:all','-cp',str(out),name],check=True)
+          PYJAVA
