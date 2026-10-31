@@ -33,7 +33,7 @@ class PreviewInstallTest(unittest.TestCase):
 
     def package(self, payload):
         self.layout.mkdir(exist_ok=True)
-        for name in ("venture.exe", "venture-runtime.exe", "venture-passthrough.cmd"):
+        for name in ("venture.exe", "venture-runtime.exe"):
             (self.layout / name).write_bytes(payload + name.encode())
         self.manifest()
 

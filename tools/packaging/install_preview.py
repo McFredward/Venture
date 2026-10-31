@@ -90,7 +90,7 @@ def remove_legacy_versions(root: Path) -> None:
             names = load_layout(candidate)
         except (RuntimeError, ValueError, KeyError, OSError):
             continue
-        if ("venture-passthrough.cmd" in names and
+        if ({"venture.exe", "venture-runtime.exe"}.issubset(names) and
                 hashlib.sha256((candidate / "release-files.json").read_bytes()).hexdigest()[:24] == candidate.name):
             shutil.rmtree(candidate)
     if not any(versions.iterdir()):
@@ -106,8 +106,8 @@ def install(layout: Path, root: Path, revision: str) -> dict:
     if root == root.parent or root.is_relative_to(layout) or layout.is_relative_to(root):
         raise RuntimeError("Choose a separate preview installation directory")
     names = load_layout(layout)
-    if "venture-passthrough.cmd" not in names:
-        raise RuntimeError("The package lacks its passthrough starter")
+    if not {"venture.exe", "venture-runtime.exe"}.issubset(names):
+        raise RuntimeError("The package lacks the Venture executables")
     files = managed_files(layout / "release-files.json")
     manifest_bytes = (layout / "release-files.json").read_bytes()
     manifest_hash = hashlib.sha256(manifest_bytes).hexdigest()
