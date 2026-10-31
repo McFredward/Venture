@@ -1,0 +1,20 @@
+name: FFmpeg verifier discovery
+on:
+  pull_request:
+  push:
+    branches: [fix/windows-ffmpeg-verifier]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  tools:
+    strategy:
+      matrix:
+        os: [ubuntu-24.04, windows-2025]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+      - run: python tests/ffmpeg_tools_test.py
