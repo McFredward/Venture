@@ -441,6 +441,7 @@ Settings Settings::load(const fs::path &data) {
     s.texture_compression_threshold = int(percent);
   if (auto jobs = number(j, "parallelDownloads"); jobs >= 1 && jobs <= 4)
     s.parallel_downloads = int(jobs);
+  s.steam_frame_passthrough = field(j, "steamFramePassthrough") == true;
   s.console = field(j, "launchWithConsole") == true;
   s.check_updates = field(j, "checkForUpdates") != false;
   s.dismissed_update = str(j, "dismissedUpdate");
@@ -472,6 +473,7 @@ void Settings::save(const fs::path &data) const {
          {"textureCompression", texture_compression},
          {"textureCompressionThreshold", texture_compression_threshold},
          {"parallelDownloads", parallel_downloads},
+         {"steamFramePassthrough", steam_frame_passthrough},
          {"launchWithConsole", console},
          {"checkForUpdates", check_updates},
          {"dismissedUpdate", dismissed_update},
