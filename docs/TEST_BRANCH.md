@@ -4,9 +4,10 @@ This branch is exactly the passthrough PR plus the independently reviewed Window
 build/install scripts. No launcher idle/pacing, Unity fragment, preview packaging,
 FFmpeg discovery or global identity-scanner changes are merged here.
 
-The only test-specific configuration is `.venture-install.json`, which preserves
-`%LOCALAPPDATA%\Venture-Passthrough` and the existing desktop shortcut name. The
-application sources are identical to `feat/steam-link-passthrough`.
+Installation uses the general script defaults: the native Program Files directory
+(normally `C:\Program Files\Venture`) and a **Venture** desktop shortcut. The former
+test-specific AppData deployment profile has been removed. Application sources
+are identical to `feat/steam-link-passthrough`.
 
 ## Install and update on Windows
 
@@ -24,6 +25,10 @@ Changes from the PR branch are merged into this test branch, preserving its upda
 history. The first build is expensive; subsequent runs reuse dependency/compiler
 caches and compile changed code. One installation directory is overwritten; no
 revision-specific installation directories or backup copies are retained.
+The final file installation requests Windows administrator approval when needed;
+compilation and application startup stay in the original user's process. After
+successful installation, unchanged files from owned earlier AppData installations
+are cleaned up; settings, saves, user files and build caches are preserved.
 
 Build logs are in `build/local-install/*-build.log`. Temporary package copies are
 removed even when a build/install fails. The script's general options and repair
