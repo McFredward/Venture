@@ -4,6 +4,7 @@
 #include "xr/haptic_output.h"
 #include "xr/menu_chord.h"
 #include "xr/clock.h"
+#include "xr/reference_spaces.h"
 #include "common/first_frame_progress.h"
 #include "common/log.h"
 #include "core/engine_policy.h"
@@ -779,6 +780,7 @@ XrResult xrCreateReferenceSpace(XrSession handle, const XrReferenceSpaceCreateIn
     else
       native = emulated_local_floor(handle, native);
   }
+  native = venture::xr::upright_reference_space(handle, native);
   auto result = ::xrCreateReferenceSpace(handle, &native, out);
   if (XR_SUCCEEDED(result)) track_handle(*out, "XrSpace", handle);
   const auto& p = info->poseInReferenceSpace;
@@ -1175,6 +1177,10 @@ XrResult xrEndFrame(XrSession handle, const XrFrameEndInfo *info) {
   };
   for (; i < info->layerCount; ++i) {
     auto layer = info->layers[i];
+    // prepare_passthrough_frame validated these local handles. With no active
+    // reconstruction layer, leave all other layers on ordinary presentation.
+    if (passthrough.omit_paused_layers && layer && layer->type == XR_TYPE_COMPOSITION_LAYER_PASSTHROUGH_FB)
+      continue;
     bool converted = false;
     if (layer && valid_handle(layer->space, "XrSpace")) {
       const StructureInfo* metadata = nullptr;
