@@ -4,6 +4,8 @@
 
 # Venture
 
+**Steam Frame hardware test branch:** see [pull/build/test instructions](docs/TEST_BRANCH.md).
+
 **A Meta Quest emulator for PC VR.**
 
 Play the Meta Quest games you own on your PC headset, at full PC speed and resolution.<br>
