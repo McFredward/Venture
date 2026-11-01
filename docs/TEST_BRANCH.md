@@ -5,9 +5,8 @@ build/install scripts. No launcher idle/pacing, Unity fragment, preview packagin
 FFmpeg discovery or global identity-scanner changes are merged here.
 
 Installation uses the general script defaults: the native Program Files directory
-(normally `C:\Program Files\Venture`) and a **Venture** desktop shortcut. The former
-test-specific AppData deployment profile has been removed. Application sources
-are identical to `feat/steam-link-passthrough`.
+(normally `C:\Program Files\Venture`) and a **Venture** desktop shortcut.
+Application sources are identical to `feat/steam-link-passthrough`.
 
 ## Install and update on Windows
 
@@ -26,9 +25,7 @@ history. The first build is expensive; subsequent runs reuse dependency/compiler
 caches and compile changed code. One installation directory is overwritten; no
 revision-specific installation directories or backup copies are retained.
 The final file installation requests Windows administrator approval when needed;
-compilation and application startup stay in the original user's process. After
-successful installation, unchanged files from owned earlier AppData installations
-are cleaned up; settings, saves, user files and build caches are preserved.
+compilation and application startup stay in the original user's process.
 
 Build logs are in `build/local-install/*-build.log`. Temporary package copies are
 removed even when a build/install fails. The script's general options and repair
