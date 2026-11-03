@@ -3,6 +3,7 @@
 #include "common/saves_migration.h"
 #include "common/file_ops.h"
 #include <algorithm>
+#include <cctype>
 #include <cstdlib>
 #include <fstream>
 #include <set>
@@ -186,7 +187,11 @@ void save(const fs::path &file, const std::vector<meta::Game> &games) {
       Json{{"version", 1}, {"savedAt", paths::timestamp()}, {"games", rows}}
           .dump(2));
 }
-void uninstall(const fs::path &root, const Install &install) {
+void uninstall(const fs::path &library, const Install &install) {
+  // A library folder reached through a link (a games folder moved to another
+  // drive with a junction) is removed from at its real location; links below
+  // it are still refused.
+  const auto root = fs::weakly_canonical(library);
   auto target =
       paths::game_dir(root, install.plan.package, install.plan.version_code);
   if (fs::weakly_canonical(target) != fs::weakly_canonical(install.directory) ||
@@ -278,6 +283,7 @@ void refresh_catalog(const fs::path &root, const meta::Plan &catalog) {
   if (!meta::catalog_replaces(catalog, previous))
     throw std::runtime_error(meta::catalog_unavailable);
   auto plan = catalog;
+  keep_installed_apk(plan, previous, dir);
   // An import's own data files (no Meta id) and recorded hashes stay.
   for (auto &f : previous.files) {
     auto same = std::ranges::find(plan.files, f.name, &meta::File::name);
@@ -296,6 +302,26 @@ void refresh_catalog(const fs::path &root, const meta::Plan &catalog) {
   std::erase_if(plan.installed_addons,
                 [&](auto &sku) { return !addon_installed(candidate, sku); });
   paths::atomic_write(dir / "plan.json", plan.json().dump(2));
+}
+void keep_installed_apk(meta::Plan &plan, const meta::Plan &installed,
+                        const fs::path &directory) {
+  if (plan.app_id != installed.app_id || plan.binary_id != installed.binary_id)
+    return;
+  auto old = std::ranges::find(installed.files, std::string("apk"), &meta::File::kind);
+  if (old == installed.files.end() || !old->size)
+    return;
+  auto apk = std::ranges::find_if(plan.files, [&](const meta::File &f) {
+    return f.kind == "apk" && f.name == old->name;
+  });
+  if (apk == plan.files.end() || apk->size == old->size)
+    return;
+  auto path = directory / paths::from_utf8(old->name);
+  std::error_code ec;
+  if (!paths::within(directory, path) || !fs::is_regular_file(path, ec) ||
+      fs::file_size(path, ec) != old->size || ec)
+    return;
+  apk->size = old->size;
+  apk->sha256 = old->sha256;
 }
 void uninstall_addon(const fs::path &root, const Install &install,
                      std::string_view sku) {
@@ -344,21 +370,48 @@ unsigned long long frames_submitted(std::string_view line, unsigned long long fr
   return frames;
 }
 }  // namespace
+std::vector<std::string> missing_expansions(const Install &install) {
+  std::vector<std::string> missing;
+  for (const auto &f : install.plan.files) {
+    if (!f.base() || f.kind != "obb") continue;
+    const auto target = install.directory / paths::from_utf8(f.name);
+    // Only a file that is not there; an unreadable one is not called missing.
+    std::error_code ec;
+    if (paths::within(install.directory, target) && fs::status(target, ec).type() == fs::file_type::not_found)
+      missing.push_back(f.name);
+  }
+  return missing;
+}
 bool needed_meta_sign_in(const fs::path &log) {
   std::ifstream in(log, std::ios::binary);
-  bool init_failed = false;
+  bool init_failed = false, crashed_on_reply = false;
   unsigned long long frames = 0;
+  double last = 0, refused = -1;
   for (std::string line; std::getline(in, line);) {
+    // log::write lines start with "<seconds>.<ms>"; continuation lines do not.
+    char *end = nullptr;
+    if (const double at = std::strtod(line.c_str(), &end); end != line.c_str() && at > 0) last = at;
     if (line.find("[ovrplatform] ovr_User_GetLoggedInUser request=") != std::string::npos ||
         line.find("[ovrplatform] ovr_Entitlement_GetIsViewerEntitled request=") != std::string::npos)
       if (line.find(" error=-20001") != std::string::npos) return true;
-    if (line.find("[ovrplatform] initialization failed error=-20001") != std::string::npos) init_failed = true;
+    // Synchronous initialization logs its own line; the asynchronous one
+    // completes as an ordinary request.
+    if (line.find("[ovrplatform] initialization failed error=-20001") != std::string::npos ||
+        (line.find("[ovrplatform] ovr_PlatformInitializeAndroidAsynchronous request=") != std::string::npos &&
+         line.find(" error=-20001") != std::string::npos))
+      init_failed = true;
+    if (line.find("[ovrplatform] ") != std::string::npos && line.find(" request=") != std::string::npos &&
+        line.find(" error=") != std::string::npos)
+      refused = last;
+    if (line.find("[libc] Fatal signal ") != std::string::npos && refused >= 0 && last - refused < 10)
+      crashed_on_reply = true;
     frames = frames_submitted(line, frames);
   }
   // A failed platform initialization alone is not fatal: many games play on
   // without it. One that quits before rendering past its first frames (Pinball
-  // FX, Deadpool VR) needed the account.
-  return init_failed && frames < 10;
+  // FX, Deadpool VR), or that crashes handling the failed reply of a later
+  // platform request (a null user in an IAP callback), needed the account.
+  return init_failed && (frames < 10 || crashed_on_reply);
 }
 bool needed_device_attestation(const fs::path &log) {
   std::ifstream in(log, std::ios::binary);
@@ -381,18 +434,29 @@ bool needed_device_attestation(const fs::path &log) {
 std::string missing_expansion(const fs::path &log) {
   std::ifstream in(log, std::ios::binary);
   std::string name;
+  std::vector<std::string> errors;
   unsigned long long frames = 0;
   constexpr std::string_view marker = "[vfs] Missing expansion file: the game looked for ";
   for (std::string line; std::getline(in, line);) {
-    if (auto at = line.find(marker); at != std::string::npos && name.empty()) {
-      name = line.substr(at + marker.size());
-      name = name.substr(0, name.find(','));
+    if (auto at = line.find(marker); at != std::string::npos) {
+      if (name.empty()) {
+        name = line.substr(at + marker.size());
+        name = name.substr(0, name.find(','));
+      }
+    } else if (line.find(" E [") != std::string::npos && line.find(".obb") != std::string::npos &&
+               errors.size() < 64) {
+      errors.push_back(line);
     }
     frames = frames_submitted(line, frames);
   }
-  // Games probe for optional patch files too; only a game that never got
-  // past its first frames was stopped by the missing one.
-  return frames < 10 ? name : std::string{};
+  const bool failed = !name.empty() && std::ranges::any_of(errors, [&](const std::string &e) {
+    return e.find(name) != std::string::npos;
+  });
+  // Games probe for optional patch files too (Unity looks for one at every
+  // start: Batman: Arkham Shadow ships none). Only a game that reported an
+  // error about the file and never got past its first frames was stopped by
+  // it (Iron Man VR: "Unable to load GUID for '.../patch...obb'").
+  return failed && frames < 10 ? name : std::string{};
 }
 std::string runtime_failure(std::string_view tail, int code) {
   std::string_view last, last_runtime, dump;
@@ -493,7 +557,12 @@ Settings Settings::load(const fs::path &data) {
     s.texture_compression_threshold = int(percent);
   if (auto jobs = number(j, "parallelDownloads"); jobs >= 1 && jobs <= 4)
     s.parallel_downloads = int(jobs);
-  s.steam_frame_passthrough = field(j, "steamFramePassthrough") == true;
+  if (auto tag = str(j, "gameLanguage"); tag.size() <= 16 && std::ranges::all_of(tag, [](unsigned char c) {
+        return std::isalnum(c) || c == '-';
+      }))
+    s.game_language = tag;
+  // Preserve the old Steam Frame opt-in; the renamed key takes precedence.
+  s.passthrough = field(j, j.contains("passthrough") ? "passthrough" : "steamFramePassthrough") == true;
   s.console = field(j, "launchWithConsole") == true;
   s.check_updates = field(j, "checkForUpdates") != false;
   s.dismissed_update = str(j, "dismissedUpdate");
@@ -525,7 +594,8 @@ void Settings::save(const fs::path &data) const {
          {"textureCompression", texture_compression},
          {"textureCompressionThreshold", texture_compression_threshold},
          {"parallelDownloads", parallel_downloads},
-         {"steamFramePassthrough", steam_frame_passthrough},
+         {"gameLanguage", game_language},
+         {"passthrough", passthrough},
          {"launchWithConsole", console},
          {"checkForUpdates", check_updates},
          {"dismissedUpdate", dismissed_update},

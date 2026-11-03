@@ -33,12 +33,20 @@ behavior are documented in [LOCAL_BUILD.md](LOCAL_BUILD.md).
 
 Use the existing separately installed
 [Steam Link Native Passthrough](https://github.com/McFredward/steam-link-native-passthrough)
-PC/Frame companions and enable **Settings → Runtime → Steam Frame passthrough**.
-This remains Steam Frame only. The build/install script does not change the Frame,
-SteamVR or companion installation. No startup environment variable is needed.
+PC/Frame companions and enable **Settings → Runtime → Passthrough (mixed reality)**.
+The Steam Link backend remains Steam Frame only; native host passthrough is also
+behind this default-off setting. The build/install script does not change the Frame,
+SteamVR or companion installation. The launcher sets `VENTURE_PASSTHROUGH=1` or `0` for each game; users do not
+need to set it themselves.
+
+This test branch includes current upstream main (`ae3ed1f`) and the November 3
+review fixes from the rebased passthrough PR. Its application sources and
+passthrough tests are identical to that PR branch.
 
 ## Hardware checks after the review changes
 
+- With passthrough off, confirm the game uses ordinary VR even on a host that
+  exposes native passthrough. Enable the option and relaunch for MR.
 - Start Spirit Sling Tabletop in MR; inspect both eyes, fractional transparency
   and additive effects.
 - Toggle between MR and ordinary VR repeatedly in the same session.

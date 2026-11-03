@@ -6,6 +6,7 @@
 #include "common/log.h"
 #include "hle/vulkan/vulkan.h"
 #include "xr/vulkan_extensions.h"
+#include "xr/display_memory.h"
 #include "platform/thread_priority.h"
 #include <algorithm>
 #include <utility>
@@ -121,13 +122,24 @@ float vrapi_GetSystemPropertyFloat(const Java *, std::int32_t property) {
     if (state().mobile) {
       auto tracking = vrapi_GetPredictedTracking2(state().mobile, 0);
       auto &p = tracking.eye[0].projection;
-      if (p.m[0][0] > 0 && p.m[1][1] > 0)
-        return (property == 7 ? 2 * std::atan(1 / p.m[0][0]) : 2 * std::atan(1 / p.m[1][1])) *
-               57.2957795f;
+      // The symmetric frustum covering the eye's projection: a Quest 3 reports
+      // 108 x 110 degrees for its -54/+40 by +44/-55 eye. A side's tangent is
+      // (offset -+ 1) / scale, so the wider side is (1 + |offset|) / scale.
+      const float scale = property == 7 ? p.m[0][0] : p.m[1][1];
+      const float offset = property == 7 ? p.m[0][2] : p.m[1][2];
+      if (scale > 0) return 2 * std::atan((1 + std::abs(offset)) / scale) * 57.2957795f;
     }
     // SUGGESTED_EYE_FOV_DEGREES is queried to construct cameras before
-    // EnterVrMode. Recommend a nominal 90-degree camera until a live OpenXR
-    // session provides projection data; zero creates a degenerate camera.
+    // EnterVrMode (CryEngine's mobile plugin keeps it for the game camera).
+    // Report the symmetric frustum covering this host's view as a session will;
+    // the last session remembers it. Without one, a nominal 90 degrees: zero
+    // creates a degenerate camera.
+    if (const auto fov = venture::xr::remembered_eye_fov()) {
+      const auto &f = (*fov)[0];
+      const float half = property == 7 ? std::max(std::abs(f.angleLeft), std::abs(f.angleRight))
+                                       : std::max(std::abs(f.angleUp), std::abs(f.angleDown));
+      return 2 * half * 57.2957795f;
+    }
     return 90.f;
   }
   failure("GetSystemPropertyFloat unavailable property", property);

@@ -18,6 +18,7 @@
 #include "launcher/auth_browser.h"
 #include "launcher/options.h"
 #include "launcher/worker.h"
+#include <chrono>
 #include <atomic>
 #include <deque>
 #include <future>
@@ -136,6 +137,9 @@ protected:
     std::optional<int> exit;
     std::string failure; // shown for a non-zero exit, or why a game closed itself
     bool quitting = false; // Quit game was pressed; the game is saving and closing
+    // Quit game takes the Play button's place; it ignores clicks for a moment
+    // after the start so a double click on Play does not quit the game.
+    std::chrono::steady_clock::time_point started{};
   };
   std::map<std::string, Running> running_;
   std::set<std::string> launch_pending_;
@@ -220,7 +224,8 @@ protected:
   void scan_local(fs::path picked);
   // New games go to `root` (default: the games folder); one already installed
   // stays in its library folder.
-  void start_import(bool device, const fs::path &root = {});
+  // steam: whether new games go to Steam; unset takes the default for new games.
+  void start_import(bool device, const fs::path &root = {}, std::optional<bool> steam = {});
   ImportMatch import_match(const ImportItem &item) const;
   fs::path adb_path() const;
   void refresh();

@@ -1,4 +1,5 @@
 #include "common/download/manager.h"
+#include "common/file_ops.h"
 #include "common/library/library.h"
 #include "http_loopback.h"
 #include <atomic>
@@ -102,6 +103,56 @@ void seed(const fs::path &root) {
   paths::atomic_write(dir / "required.dat", "ok");
 }
 } // namespace
+
+TEST_CASE("a game in a library folder reached through a link uninstalls; a linked game folder does not") {
+  Directory directory;
+  const auto data = directory.root / "data", real = directory.root / "real", link = directory.root.parent_path() / (directory.root.filename().string() + "-link");
+  struct DataDir {
+    std::string previous;
+    bool had = std::getenv("VENTURE_DATA_DIR") != nullptr;
+    void set(const std::string &value) {
+#ifdef _WIN32
+      _putenv_s("VENTURE_DATA_DIR", value.c_str());
+#else
+      setenv("VENTURE_DATA_DIR", value.c_str(), 1);
+#endif
+    }
+    explicit DataDir(const fs::path &value) {
+      if (had) previous = std::getenv("VENTURE_DATA_DIR");
+      set(paths::utf8(value));
+    }
+    ~DataDir() {
+      if (had) set(previous);
+#ifdef _WIN32
+      else _putenv_s("VENTURE_DATA_DIR", "");
+#else
+      else unsetenv("VENTURE_DATA_DIR");
+#endif
+    }
+  } env(data);
+  fs::create_directories(real);
+  link_directory(link, real);
+  seed(link);
+  auto installs = library::scan(link);
+  REQUIRE(installs.size() == 1);
+  library::uninstall(link, installs[0]);
+  CHECK_FALSE(fs::exists(real / "com.example.dlc" / "12"));
+
+  // A game folder that is itself a link is not an installation, so it is
+  // never removed through.
+  const auto elsewhere = directory.root / "elsewhere";
+  seed(elsewhere);
+  fs::remove(real / "com.example.dlc");
+  link_directory(real / "com.example.dlc", elsewhere / "com.example.dlc");
+  CHECK(library::scan(real).empty());
+  auto moved = library::scan(elsewhere);
+  REQUIRE(moved.size() == 1);
+  moved[0].directory = real / "com.example.dlc" / "12";
+  CHECK_THROWS(library::uninstall(real, moved[0]));
+  CHECK(fs::exists(elsewhere / "com.example.dlc" / "12" / "plan.json"));
+  fs::remove(real / "com.example.dlc");
+  fs::remove(link);
+}
 
 TEST_CASE("DLC ownership is durable, unexpired, complete and fail closed") {
   test::Server server;
@@ -372,6 +423,65 @@ TEST_CASE("DLC fallback catalogs never replace an installed catalog or count as 
   installs = library::scan(fresh.root);
   REQUIRE(installs.size() == 1);
   CHECK(installs[0].complete);
+}
+// An import keeps its own APK of the store's build (import::plan), possibly a
+// modified one. Upgrading its manifest to the full catalog must not put the
+// store's APK size back, and resuming fetches only what the install lacks.
+TEST_CASE("an imported APK survives a catalog refresh and a resumed download") {
+  Directory directory;
+  seed(directory.root);
+  auto dir = paths::game_dir(directory.root, "com.example.dlc", "12");
+  const std::string imported_hash(64, 'a');
+  auto plan = meta::parse_plan(paths::read_json(dir / "plan.json"));
+  for (auto &f : plan.files)
+    if (f.kind == "apk") {
+      f.size = 7;
+      f.sha256 = imported_hash;
+    }
+  paths::atomic_write(dir / "plan.json", plan.json().dump());
+  paths::atomic_write(dir / "com.example.dlc.apk", "modded!");
+  fs::remove(dir / "required.dat");  // a required asset the import lacked
+
+  auto apk_entry = [&] {
+    auto p = meta::parse_plan(paths::read_json(dir / "plan.json"));
+    return *std::ranges::find(p.files, std::string("apk"), &meta::File::kind);
+  };
+  auto full = meta::Store("fixture", {}, queries()).owned_plan("123456", "456789");
+  library::refresh_catalog(directory.root, full);
+  CHECK(apk_entry().size == 7);
+  CHECK(apk_entry().sha256 == imported_hash);
+  auto installs = library::scan(directory.root);
+  REQUIRE(installs.size() == 1);
+  CHECK_FALSE(installs[0].complete);  // only required.dat is missing
+
+  std::vector<std::string> fetched;
+  download::Manager manager(
+      directory.root / "state", [] {},
+      {queries(), {},
+       [&](std::string, const fs::path &path, uint64_t size, std::stop_token,
+           const http::Progress &progress) {
+         if (!fs::is_regular_file(path) || fs::file_size(path) != size) {
+           fetched.push_back(paths::utf8(path.filename()));
+           paths::atomic_write(path, std::string(size, 'X'));
+         }
+         progress(size, size);
+       }});
+  manager.set_account("0123456789ab");
+  manager.enqueue("123456", "Game", directory.root, "fixture");
+  wait_job(manager);
+  REQUIRE(manager.snapshot()[0].state == download::State::complete);
+  CHECK(fetched == std::vector<std::string>{"required.dat"});
+  CHECK(paths::read(dir / "com.example.dlc.apk") == "modded!");
+  CHECK(apk_entry().size == 7);
+  installs = library::scan(directory.root);
+  REQUIRE(installs.size() == 1);
+  CHECK(installs[0].complete);
+
+  // An APK that no longer has the recorded size is not the import's: the
+  // store's build replaces it.
+  paths::atomic_write(dir / "com.example.dlc.apk", "cut");
+  library::refresh_catalog(directory.root, full);
+  CHECK(apk_entry().size == 4);
 }
 // Meta fails the whole-library query (HTTP 500 every time) for accounts with
 // very many games; each app's listing still says whether the account owns it.

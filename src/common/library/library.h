@@ -23,6 +23,13 @@ bool addon_installed(const Install &install, std::string_view sku);
 // Upgrade old manifests from a fresh, same-build Meta catalog. Presence comes
 // from size-checked files on disk; this never asserts account ownership.
 void refresh_catalog(const fs::path &root, const meta::Plan &catalog);
+// A same-build Meta plan names the store's APK, but an import may have
+// installed another APK of that build (a modified one). While the APK in
+// `directory` still has the size the installed manifest records, `plan` keeps
+// that size and hash, so a catalog refresh or a resumed download neither marks
+// the install incomplete nor replaces the APK.
+void keep_installed_apk(meta::Plan &plan, const meta::Plan &installed,
+                        const fs::path &directory);
 void uninstall_addon(const fs::path &root, const Install &install,
                      std::string_view sku);
 std::vector<std::string> owning_accounts(const std::vector<meta::Game> &games,
@@ -49,8 +56,12 @@ std::string runtime_failure(std::string_view log_tail, int exit_code);
 // entitlement and getting "not signed in" (no account, or an expired one).
 // Games such as Beat Saber then quit on their own, often with exit code 0.
 // A failed platform initialization counts when the game then quit before
-// rendering more than a few frames.
+// rendering more than a few frames, or crashed right after a later platform
+// request failed.
 bool needed_meta_sign_in(const fs::path &log);
+// The expansion files (.obb) an install's plan requires that are absent from
+// its directory. Files only probed for (an optional patch OBB) are not listed.
+std::vector<std::string> missing_expansions(const Install &install);
 // The expansion file (.obb) a run looked for and its install lacks, when the
 // game then never rendered past its first frames; empty otherwise.
 std::string missing_expansion(const fs::path &log);
@@ -93,8 +104,11 @@ struct Settings {
   int texture_compression_threshold = 50;
   // Games that download at once (Settings > Library); one by default.
   int parallel_downloads = 1;
-  // Steam Frame over Steam Link, applied when the next game starts.
-  bool steam_frame_passthrough = false;
+  // The language games see as the system language, a BCP-47 tag such as
+  // "en-US" (Settings > Runtime); empty follows the host's language.
+  std::string game_language;
+  // Mixed reality through a native host extension or Steam Link, next launch.
+  bool passthrough = false;
   bool runtime_override() const;
   // `games` first, then the other library folders.
   std::vector<fs::path> roots() const;

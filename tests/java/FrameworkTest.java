@@ -6,15 +6,70 @@ import java.util.concurrent.*;
 
 /** JDK-only behavioral tests. No installed game, native library, JIT or JUnit. */
 public final class FrameworkTest {
+  // Self-signed EC certificate for the trust extension checks.
+  private static final String TEST_CERT =
+      "MIIBRTCB7KADAgECAgkA73fWBktecHswCgYIKoZIzj0EAwMwFjEUMBIGA1UEAxML"
+      + "ZXhhbXBsZS5jb20wIBcNMjYxMTAxMTk1NDIxWhgPMjEyNjEwMDgxOTU0MjFaMBYx"
+      + "FDASBgNVBAMTC2V4YW1wbGUuY29tMFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE"
+      + "OOjZtND/6H/DBFY3YczLAVPhTIkO0p4kqW1tdf2iwXzEnJBmnQf9Dal0k+vTBoRN"
+      + "TPpEQNA2WiEgwnsy6MjGA6MhMB8wHQYDVR0OBBYEFN3B5aHBVDkk1SENofWjpoRq"
+      + "Wym9MAoGCCqGSM49BAMDA0gAMEUCIBVQsk3YnGyLIbflRLbEYjIjgBun8Q5QThHU"
+      + "Hzmc+i3pAiEA1kpEXFh0CpxPhvnkdp8bFlk1dZdMs0GSLQRKAlL8uFU=";
+  public static final class ServiceRunnable implements Runnable { public void run() {} }
   private static int checks;
   private static void check(boolean ok, String message) {
     checks++;
     if (!ok)
       throw new AssertionError(message);
   }
+  /** A class file for an empty public interface, as an APK's converted copy declares it. */
+  private static byte[] emptyInterface(String internalName) throws java.io.IOException {
+    var bytes = new java.io.ByteArrayOutputStream();
+    var out = new java.io.DataOutputStream(bytes);
+    out.writeInt(0xCAFEBABE); out.writeShort(0); out.writeShort(52);
+    out.writeShort(5); // constant pool entries 1-4
+    out.writeByte(7); out.writeShort(2); out.writeByte(1); out.writeUTF(internalName);
+    out.writeByte(7); out.writeShort(4); out.writeByte(1); out.writeUTF("java/lang/Object");
+    out.writeShort(0x0601); // public interface abstract
+    out.writeShort(1); out.writeShort(3);
+    out.writeShort(0); out.writeShort(0); out.writeShort(0); out.writeShort(0); // interfaces, fields, methods, attributes
+    return bytes.toByteArray();
+  }
   public static class OptionalParameter {}
   public static class NativeStartupActivity extends android.app.NativeActivity {
     public void createOnly() { super.onCreate(null); }
+  }
+  // AndroidX BuildCompat initializes SdkExtensions on every API 30+ device
+  // (OnBackPressedDispatcher, so every ComponentActivity); a missing class
+  // failed the activity's constructor (HyperVR's Bad Inmate).
+  private static void sdkExtensions() throws Exception {
+    var hostField = RuntimeEnvironment.class.getDeclaredField("host"); hostField.setAccessible(true);
+    Object oldHost = hostField.get(null);
+    hostField.set(null, java.lang.reflect.Proxy.newProxyInstance(Host.class.getClassLoader(), new Class<?>[]{Host.class}, (p, method, args) -> {
+      if (!method.getName().equals("systemProperty")) throw new UnsupportedOperationException();
+      String value = switch ((String) args[0]) {
+        case "build.version.extensions.r" -> "3";
+        case "build.version.extensions.s" -> "x";
+        default -> "";
+      };
+      return value.getBytes(java.nio.charset.StandardCharsets.UTF_8);
+    }));
+    try {
+      check(android.os.ext.SdkExtensions.getExtensionVersion(Build.VERSION_CODES.R) == 3, "R extension level comes from its property");
+      check(android.os.ext.SdkExtensions.getExtensionVersion(Build.VERSION_CODES.S) == 0, "malformed S extension property reads as 0");
+      check(android.os.ext.SdkExtensions.getExtensionVersion(Build.VERSION_CODES.TIRAMISU) == 0
+          && android.os.ext.SdkExtensions.getExtensionVersion(1000000) == 0, "12L reports no T or AD_SERVICES extensions");
+      boolean rejected = false;
+      try { android.os.ext.SdkExtensions.getExtensionVersion(Build.VERSION_CODES.Q); } catch (IllegalArgumentException expected) { rejected = true; }
+      check(rejected, "pre-R SDKs have no extensions");
+      var all = android.os.ext.SdkExtensions.getAllExtensionVersions();
+      check(all.equals(Map.of(Build.VERSION_CODES.R, 3, Build.VERSION_CODES.S, 0)), "all extension levels list R and S");
+      boolean immutable = false;
+      try { all.put(Build.VERSION_CODES.TIRAMISU, 1); } catch (UnsupportedOperationException expected) { immutable = true; }
+      check(immutable, "extension level map is unmodifiable");
+    } finally {
+      hostField.set(null, oldHost);
+    }
   }
   private static void censusValues() {
     byte[] bytes = {0, 1, 2, (byte) 251, (byte) 255};
@@ -942,6 +997,10 @@ public final class FrameworkTest {
       check("48000".equals(audioManager.getProperty(android.media.AudioManager.PROPERTY_OUTPUT_SAMPLE_RATE))
           && "240".equals(audioManager.getProperty(android.media.AudioManager.PROPERTY_OUTPUT_FRAMES_PER_BUFFER)),
           "audio output properties answer without an output device");
+      // FMOD Ex's OpenSL output reflects on the hidden class (Beat Saber demo: output init error 60).
+      check(android.media.AudioSystem.getPrimaryOutputSamplingRate() == 48000
+          && android.media.AudioSystem.getPrimaryOutputFrameCount() == 240,
+          "AudioSystem reports the primary output's rate and period");
       // Photon Voice's echo-cancelling input routes voice chat (Android 12+).
       var voice = new android.media.AudioManager() {
         public android.media.AudioDeviceInfo[] getDevices(int flags) {
@@ -983,6 +1042,12 @@ public final class FrameworkTest {
     boolean stillHeld = multicast.isHeld();
     multicast.release();
     check(wifi.isWifiEnabled() && stillHeld && !multicast.isHeld(), "Wi-Fi multicast locks are reference counted");
+    // ByteBrew reads the carrier during Les Mills Bodycombat's entry load (NoSuchMethodError stopped it).
+    var phone = (android.telephony.TelephonyManager) new android.content.Context().getSystemService(android.content.Context.TELEPHONY_SERVICE);
+    check(phone.getSimOperatorName().isEmpty() && phone.getSimOperator().isEmpty()
+        && phone.getSimState() == android.telephony.TelephonyManager.SIM_STATE_UNKNOWN && phone.getDeviceId() == null
+        && phone.getSubscriptionId() == -1 && phone.getActiveModemCount() == 0 && !phone.isNetworkRoaming(),
+        "telephony answers as a device without a phone service");
     boolean encoderRejected = false, unknownRejected = false;
     try { android.media.MediaCodec.createByCodecName("OMX.google.h264.encoder"); } catch (java.io.IOException e) { encoderRejected = true; }
     try { android.media.MediaCodec.createByCodecName("OMX.example.unknown"); } catch (IllegalArgumentException e) { unknownRejected = true; }
@@ -998,6 +1063,27 @@ public final class FrameworkTest {
     span.draw(canvas, "e", 0, 1, 0, 0, 0, 0, null);
     check(span instanceof android.text.style.UpdateAppearance && canvas.getSaveCount() == 2,
         "replacement spans draw on an inert canvas");
+  }
+  private static void textToSpeech() throws Exception {
+    // Unreal's GameActivity implements OnInitListener; with no engine every request fails (Espire 2).
+    int[] heard = {1};
+    var tts = new android.speech.tts.TextToSpeech(new android.content.Context(), status -> heard[0] = status);
+    check(heard[0] == android.speech.tts.TextToSpeech.ERROR && tts.speak("hi", android.speech.tts.TextToSpeech.QUEUE_FLUSH, null, "id") == android.speech.tts.TextToSpeech.ERROR
+        && tts.setLanguage(java.util.Locale.US) == android.speech.tts.TextToSpeech.LANG_NOT_SUPPORTED
+        && !tts.isSpeaking() && tts.getEngines().isEmpty(), "TextToSpeech without an engine refuses requests");
+    tts.shutdown();
+  }
+  private static void androidCAStore() throws Exception {
+    // Unity's TLS enumerates the system roots like this and crashes when it fails (Alcove).
+    com.venture.runtime.AndroidCAStore.install();
+    var store = java.security.KeyStore.getInstance("AndroidCAStore");
+    store.load(null);
+    var aliases = java.util.Collections.list(store.aliases());
+    check(aliases.size() > 50 && aliases.stream().allMatch(a -> a.matches("system:[0-9a-f]{8}\\.\\d+")),
+        "AndroidCAStore lists the system roots under system: aliases");
+    var cert = (java.security.cert.X509Certificate) store.getCertificate(aliases.get(0));
+    check(store.isCertificateEntry(aliases.get(0)) && cert.getEncoded().length > 0
+        && aliases.get(0).equals(store.getCertificateAlias(cert)), "AndroidCAStore entries are trusted certificates");
   }
   private static void disabledTelemetry() throws Exception {
     // Reflect the exact class and method contracts requested by native clients.
@@ -1031,6 +1117,8 @@ public final class FrameworkTest {
     check(AppMain.quitProgress() == 0 && AppMain.quitNativeCount() == 0,
         "default lifecycle has no menu termination admission state before a quit");
     disabledTelemetry();
+    androidCAStore();
+    textToSpeech();
     var power = new PowerManager();
     check(Float.isNaN(power.getThermalHeadroom(0)) && Float.isNaN(power.getThermalHeadroom(60)),
         "unavailable thermal prediction is NaN");
@@ -1096,6 +1184,7 @@ public final class FrameworkTest {
     styledEditor.setOnClickListener(view -> {});
     check(styledEditor.isClickable(), "installing a click listener sets the Android clickable flag");
     censusValues();
+    sdkExtensions();
     intentMatching();
     manifestResolutionRegressions();
     lenientUris();
@@ -1187,6 +1276,19 @@ public final class FrameworkTest {
       networkType.set(9);
       check(connectivity.getActiveNetworkInfo().getTypeName().equals("ETHERNET"),
           "network changes are reflected by subsequent queries");
+      // Cognitive3D reads the Wi-Fi signal every tick (Les Mills Bodycombat: NoSuchMethodError getConnectionInfo).
+      var wifiManager = new android.net.wifi.WifiManager();
+      var wired = wifiManager.getConnectionInfo();
+      networkType.set(1);
+      var radio = wifiManager.getConnectionInfo();
+      check(wired.getSupplicantState() == android.net.wifi.SupplicantState.DISCONNECTED
+          && wired.getRssi() == android.net.wifi.WifiInfo.INVALID_RSSI && wired.getBSSID() == null
+          && radio.getSupplicantState() == android.net.wifi.SupplicantState.COMPLETED
+          && android.net.wifi.WifiManager.calculateSignalLevel(radio.getRssi(), 5) == 4
+          && wifiManager.calculateSignalLevel(radio.getRssi()) == wifiManager.getMaxSignalLevel()
+          && radio.getSSID().equals("<unknown ssid>") && radio.getMacAddress().equals("02:00:00:00:00:00"),
+          "Wi-Fi connection info follows the host route with Android's redacted identifiers");
+      networkType.set(9);
       networkType.set(-2);
       check(connectivity.getActiveNetworkInfo() == null && !connectivity.getNetworkInfo(1).isConnected(),
           "disconnection is reflected without reporting an active network");
@@ -1291,6 +1393,28 @@ public final class FrameworkTest {
       packageManager.getPermissionInfo("com.example.permission.NONE", 0);
       check(false, "an undefined permission is not found");
     } catch (android.content.pm.PackageManager.NameNotFoundException expected) {}
+    // The OpenXR loader's JNI wrappers bundled by Pico's plugin (Cities: VR, issue 78)
+    // resolve both getPackageInfo overloads up front, then fail the Pico runtime
+    // package lookup with NameNotFoundException as on a Quest.
+    check(android.content.pm.PackageManager.class.getMethod("getPackageInfo",
+              android.content.pm.VersionedPackage.class, int.class).getReturnType()
+            == android.content.pm.PackageInfo.class,
+        "getPackageInfo(VersionedPackage, int) exists");
+    check(packageManager.getPackageInfo(new android.content.pm.VersionedPackage("test.intent",
+              android.content.pm.PackageManager.VERSION_CODE_HIGHEST), 0).packageName.equals("test.intent"),
+        "the app's own versioned package resolves at any version");
+    try {
+      packageManager.getPackageInfo(new android.content.pm.VersionedPackage("com.pico.xr.openxr_runtime",
+          android.content.pm.PackageManager.VERSION_CODE_HIGHEST), 0);
+      check(false, "an absent versioned package is not found");
+    } catch (android.content.pm.PackageManager.NameNotFoundException expected) {}
+    var parcel = android.os.Parcel.obtain();
+    new android.content.ComponentName("test.intent", ".Main").writeToParcel(parcel, 0);
+    parcel.setDataPosition(0);
+    check(new android.content.ComponentName(parcel).getClassName().equals("test.intent.Main")
+            && android.content.Intent.class.getConstructor(String.class, android.net.Uri.class,
+                   android.content.Context.class, Class.class) != null,
+        "every ComponentName and Intent constructor the loader's wrappers resolve exists");
     // Bogo's avatar loader asks for another package's context; only the app's own exists.
     var packaged = new android.content.Context() {
       @Override public String getPackageName() { return "test.packaged"; }
@@ -2187,11 +2311,15 @@ public final class FrameworkTest {
           }
           if (method.getName().equals("guestTid")) return 1;
           if (method.getName().equals("setThreadPriority")) return null;
+          if (method.getName().equals("bindClass")) return null;
           throw new UnsupportedOperationException(method.getName());
         });
     RuntimeEnvironment.configure(new String[]{"test.game", obbRoot.resolve("base.apk").toString(),
         obbRoot.resolve("data").toString(), obbRoot.resolve("cache").toString(), obbView.toString(),
         obbRoot.resolve("lib").toString(), "32", obbRoot.resolve("app.jar").toString()}, obbHost);
+    // This fixture's base.apk is not a zip, so the loader serves no APK Java resources.
+    check(providerWarnings.remove("APK Java resources are unavailable (ZipException)"),
+        "an unreadable APK leaves Java resources unavailable with a warning");
     var obbContext = new android.content.Context();
     var nativeInfo = new android.content.pm.ActivityInfo();
     nativeInfo.name = NativeStartupActivity.class.getName();
@@ -2235,6 +2363,108 @@ public final class FrameworkTest {
     check(bothExported, "receivers cannot be both exported and not exported");
     check(System.getProperty("http.proxyHost") != null || (android.net.Proxy.getHost(obbContext) == null
         && android.net.Proxy.getPort(obbContext) == -1), "no configured proxy reads as null and -1");
+    // OkHttp's Android 10+ chain cleaner (Roblox) checks trust through the extensions.
+    var rejecting = new javax.net.ssl.X509TrustManager() {
+      public void checkClientTrusted(java.security.cert.X509Certificate[] c, String a) {}
+      public void checkServerTrusted(java.security.cert.X509Certificate[] c, String a)
+          throws java.security.cert.CertificateException {
+        throw new java.security.cert.CertificateException("untrusted");
+      }
+      public java.security.cert.X509Certificate[] getAcceptedIssuers() { return new java.security.cert.X509Certificate[0]; }
+    };
+    var extensions = new android.net.http.X509TrustManagerExtensions(rejecting);
+    boolean rejected = false;
+    try {
+      var leaf = (java.security.cert.X509Certificate) java.security.cert.CertificateFactory.getInstance("X.509")
+          .generateCertificate(new java.io.ByteArrayInputStream(java.util.Base64.getMimeDecoder().decode(TEST_CERT)));
+      extensions.checkServerTrusted(new java.security.cert.X509Certificate[] {leaf}, "RSA", "example.com");
+    } catch (java.security.cert.CertificateException expected) { rejected = "untrusted".equals(expected.getMessage()); }
+    check(rejected, "trust extensions defer to the platform trust manager");
+    var accepting = new javax.net.ssl.X509TrustManager() {
+      public void checkClientTrusted(java.security.cert.X509Certificate[] c, String a) {}
+      public void checkServerTrusted(java.security.cert.X509Certificate[] c, String a) {}
+      public java.security.cert.X509Certificate[] getAcceptedIssuers() { return new java.security.cert.X509Certificate[0]; }
+    };
+    var anchor = (java.security.cert.X509Certificate) java.security.cert.CertificateFactory.getInstance("X.509")
+        .generateCertificate(new java.io.ByteArrayInputStream(java.util.Base64.getMimeDecoder().decode(TEST_CERT)));
+    var trusted = new android.net.http.X509TrustManagerExtensions(accepting)
+        .checkServerTrusted(new java.security.cert.X509Certificate[] {anchor, anchor}, "EC", "example.com");
+    check(trusted.equals(java.util.List.of(anchor)), "a trusted chain ends at its self-signed anchor");
+    check(!extensions.isUserAddedCertificate(null), "no user-added certificates");
+    // OkHttp's Android 10+ platform guards each call with android.util.CloseGuard (Roblox).
+    var guard = new android.util.CloseGuard();
+    guard.open("close");
+    guard.warnIfOpen();
+    guard.close();
+    boolean namedCloser = false;
+    try { guard.open(null); } catch (NullPointerException expected) { namedCloser = true; }
+    check(namedCloser, "a close guard needs its close method's name");
+    // Content providers route their URIs through UriMatcher (Roblox's configuration provider).
+    var matcher = new android.content.UriMatcher(android.content.UriMatcher.NO_MATCH);
+    matcher.addURI("com.example.provider", "items", 1);
+    matcher.addURI("com.example.provider", "/items/#", 2);
+    matcher.addURI("com.example.provider", "items/special", 4);
+    matcher.addURI("com.example.provider", "items/*/detail", 3);
+    matcher.addURI("com.example.provider", null, 5);
+    check(matcher.match(android.net.Uri.parse("content://com.example.provider/items")) == 1, "exact path matches");
+    check(matcher.match(android.net.Uri.parse("content://com.example.provider/items/42")) == 2, "# matches digits");
+    check(matcher.match(android.net.Uri.parse("content://com.example.provider/items/special")) == 4,
+        "a non-numeric segment skips # for an earlier exact child");
+    check(matcher.match(android.net.Uri.parse("content://com.example.provider/items/a/detail")) == 3, "* matches text");
+    check(matcher.match(android.net.Uri.parse("content://com.example.provider")) == 5, "a bare authority matches");
+    check(matcher.match(android.net.Uri.parse("content://com.example.provider/other")) == -1, "unknown paths miss");
+    check(matcher.match(android.net.Uri.parse("content://other.provider/items")) == -1, "unknown authorities miss");
+    boolean negative = false;
+    try { matcher.addURI("a", "b", -2); } catch (IllegalArgumentException expected) { negative = true; }
+    check(negative, "codes must not be negative");
+    // A provider reports this process's package as its caller (Roblox's configuration provider).
+    var callerProvider = new android.content.ContentProvider() {
+      public boolean onCreate() { return true; }
+      public String getType(android.net.Uri uri) { return null; }
+    };
+    check(callerProvider.getCallingPackage() == null, "a detached provider has no caller");
+    check(new android.content.pm.ProviderInfo().grantUriPermissions == false, "providers grant no URI permissions by default");
+    check(android.net.ssl.SSLSockets.isSupportedSocket(
+        (javax.net.ssl.SSLSocket) javax.net.ssl.SSLSocketFactory.getDefault().createSocket()), "platform TLS sockets are supported");
+    // ServiceLoader reads META-INF/services from the APK itself (Roblox's coroutine Main dispatcher).
+    var resourceApk = java.nio.file.Files.createTempFile("resources", ".apk");
+    try (var zip = new java.util.zip.ZipOutputStream(java.nio.file.Files.newOutputStream(resourceApk))) {
+      zip.putNextEntry(new java.util.zip.ZipEntry("META-INF/services/java.lang.Runnable"));
+      zip.write("FrameworkTest$ServiceRunnable\n".getBytes(java.nio.charset.StandardCharsets.UTF_8));
+      zip.putNextEntry(new java.util.zip.ZipEntry("okhttp3/publicsuffixes.gz"));
+      zip.write(new byte[] {1, 2, 3});
+    }
+    var resourceLoader = new dalvik.system.PathClassLoader("", FrameworkTest.class.getClassLoader());
+    resourceLoader.ventureResourceApk(resourceApk.toFile());
+    try (var in = resourceLoader.getResourceAsStream("okhttp3/publicsuffixes.gz")) {
+      check(in != null && java.util.Arrays.equals(in.readAllBytes(), new byte[] {1, 2, 3}), "APK entries read as Java resources");
+    }
+    check(resourceLoader.getResource("classes9.dex") == null && resourceLoader.getResource("okhttp3/") == null,
+        "absent entries and directories are no resources");
+    var services = java.util.ServiceLoader.load(Runnable.class, resourceLoader).stream().toList();
+    check(services.size() == 1 && services.get(0).type() == ServiceRunnable.class, "ServiceLoader finds APK service files");
+    // Unity's AppUI GameActivity reads the locale's layout direction in onCreate (UG).
+    check(android.text.TextUtils.getLayoutDirectionFromLocale(java.util.Locale.US) == android.util.LayoutDirection.LTR,
+        "English lays out left to right");
+    check(android.text.TextUtils.getLayoutDirectionFromLocale(java.util.Locale.forLanguageTag("ar-EG"))
+        == android.util.LayoutDirection.RTL, "Arabic lays out right to left");
+    check(android.text.TextUtils.getLayoutDirectionFromLocale(java.util.Locale.forLanguageTag("iw")) == 1
+        && android.text.TextUtils.getLayoutDirectionFromLocale(java.util.Locale.forLanguageTag("az-Arab")) == 1
+        && android.text.TextUtils.getLayoutDirectionFromLocale(java.util.Locale.forLanguageTag("az-Latn")) == 0,
+        "the script decides the direction");
+    check(android.text.TextUtils.getLayoutDirectionFromLocale(null) == 0
+        && android.text.TextUtils.getLayoutDirectionFromLocale(java.util.Locale.ROOT) == 0, "no locale is LTR");
+    // Roblox's activity sets its configuration's direction from the locale in attachBaseContext.
+    var directed = new android.content.res.Configuration();
+    directed.setLayoutDirection(java.util.Locale.forLanguageTag("he-IL"));
+    check(directed.getLayoutDirection() == android.util.LayoutDirection.RTL, "a Hebrew configuration lays out RTL");
+    directed.setLocale(java.util.Locale.US);
+    check(directed.getLayoutDirection() == android.util.LayoutDirection.LTR, "setLocale also sets the direction");
+    var ordered = new android.os.LocaleList(java.util.Locale.forLanguageTag("ar"), java.util.Locale.US);
+    directed.setLocales(ordered);
+    check(directed.getLocales() == ordered && directed.locale.getLanguage().equals("ar")
+        && directed.getLayoutDirection() == android.util.LayoutDirection.RTL, "setLocales keeps the list and its primary locale");
+    check(android.nfc.NfcAdapter.getDefaultAdapter(null) == null, "a Quest has no NFC adapter");
     // UE 5.4 AndroidThunkJava_SetNativeDisplayRefreshRate hints the rate on its surface.
     var surface = new android.view.Surface(4, 4);
     surface.setFrameRate(72f, android.view.Surface.FRAME_RATE_COMPATIBILITY_DEFAULT);
@@ -2252,6 +2482,43 @@ public final class FrameworkTest {
     try { android.os.VibrationEffect.createOneShot(20, 0); } catch (IllegalArgumentException expected) { zeroAmplitude = true; }
     try { android.os.VibrationEffect.createOneShot(0, 255); } catch (IllegalArgumentException expected) { zeroDuration = true; }
     check(effect.getDuration() == 20 && zeroAmplitude && zeroDuration, "one-shot vibration effects validate like AOSP");
+    // Sentry 6 watches its outbox for CLOSE_WRITE while it initializes.
+    var outbox = obbRoot.resolve("outbox").toFile();
+    var fileEvents = new ArrayList<Integer>();
+    var fileObserver = new android.os.FileObserver(outbox.getPath()) {
+      public void onEvent(int event, String path) { fileEvents.add(event); }
+    };
+    fileObserver.startWatching();
+    fileObserver.stopWatching();
+    fileObserver.stopWatching();
+    check(android.os.FileObserver.ALL_EVENTS == 0xfff && android.os.FileObserver.CLOSE_WRITE == 8
+        && fileEvents.isEmpty() && providerWarnings.remove("No host file events; not watching [" + outbox + "]"),
+        "FileObserver keeps inotify event values and warns that the host reports no events");
+    // Sentry passes its watcher to Lifecycle.addObserver behind a Class.forName probe.
+    check(androidx.lifecycle.LifecycleObserver.class.isInterface()
+        && androidx.lifecycle.LifecycleObserver.class.getDeclaredMethods().length == 0,
+        "androidx LifecycleObserver contract is an empty marker interface");
+    for (String lifecycleRuntime : List.of("androidx.lifecycle.DefaultLifecycleObserver",
+        "androidx.lifecycle.ProcessLifecycleOwner")) {
+      boolean absent = false;
+      try { Class.forName(lifecycleRuntime); } catch (ClassNotFoundException e) { absent = true; }
+      check(absent, "lifecycle contract does not advertise a lifecycle runtime: " + lifecycleRuntime);
+    }
+    try (var loader = new dalvik.system.PathClassLoader("", FrameworkTest.class.getClassLoader())) {
+      check(loader.loadClass("androidx/lifecycle/LifecycleObserver") == androidx.lifecycle.LifecycleObserver.class,
+          "an APK without androidx.lifecycle links against the contract");
+    }
+    Path lifecycleJar = obbRoot.resolve("lifecycle.jar");
+    try (var jar = new java.util.jar.JarOutputStream(Files.newOutputStream(lifecycleJar))) {
+      jar.putNextEntry(new java.util.zip.ZipEntry("androidx/lifecycle/LifecycleObserver.class"));
+      jar.write(emptyInterface("androidx/lifecycle/LifecycleObserver"));
+    }
+    try (var loader = new dalvik.system.PathClassLoader(lifecycleJar.toString(), FrameworkTest.class.getClassLoader())) {
+      var own = loader.loadClass("androidx.lifecycle.LifecycleObserver");
+      check(own.getClassLoader() == loader && own != androidx.lifecycle.LifecycleObserver.class
+          && loader.getResource("androidx/lifecycle/LifecycleObserver.class").getProtocol().equals("jar"),
+          "the APK's own androidx.lifecycle takes precedence over the contract");
+    }
     var layout = new android.view.WindowManager.LayoutParams();
     check(layout.preferredDisplayModeId == 0 && layout.preferredRefreshRate == 0, "no preferred display mode by default");
     android.os.BaseBundle base = new Bundle();  // bytecode names BaseBundle as the accessor owner

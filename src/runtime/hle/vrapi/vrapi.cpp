@@ -283,6 +283,12 @@ Matrix view_matrix(XrPosef p) {
   m.m[3][3] = 1;
   return m;
 }
+// Eye projections are the host view's own frustum, asymmetric on a Quest 3
+// (-54/+40 by +44/-55 degrees for the left eye), as VrApi reports them on the
+// device itself, natively and in Quest 2 compatibility mode. Only
+// SUGGESTED_EYE_FOV_DEGREES_X/Y describe the symmetric frustum covering it
+// (properties.cpp). A game that renders the tracking projection then fills
+// exactly the host's view at the host's recommended size.
 Matrix projection_matrix(XrFovf f) {
   float l = std::tan(f.angleLeft), r = std::tan(f.angleRight), u = std::tan(f.angleUp),
         d = std::tan(f.angleDown);

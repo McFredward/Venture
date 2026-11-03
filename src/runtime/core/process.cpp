@@ -10,7 +10,6 @@
 #include "platform/environment.h"
 #include "platform/low_memory.h"
 #include "common/log.h"
-#include "common/library/library.h"
 #include "common/paths.h"
 #include "common/file_ops.h"
 #include "common/saves_migration.h"
@@ -20,6 +19,7 @@
 #include <array>
 #include <cstdlib>
 #include <cstring>
+#include <format>
 #include <fstream>
 #include <iostream>
 #include <optional>
@@ -125,11 +125,8 @@ void configure_game(const std::filesystem::path& install,
             config.device_identity->device,
             config.device_identity == &native_device_identity() ? "" : " via Horizon compatibility mode");
   auto base = paths::data_dir();
-  try {
-    config.steam_frame_passthrough = library::Settings::load(base).steam_frame_passthrough;
-  } catch (const std::exception& error) {
-    log::warn("xr-passthrough", "Could not read Steam Frame setting; passthrough disabled: {}", error.what());
-  }
+  const auto* passthrough = environment::getenv("VENTURE_PASSTHROUGH");
+  config.passthrough = passthrough && std::string_view(passthrough) == "1";
   config.data_dir = account_data_dir(base, config.account_key, config.package);
   config.guest_cache_dir = config.data_dir / "cache";
   config.cache_dir = base / "cache" / config.package / std::to_string(config.version_code);
@@ -171,7 +168,9 @@ void configure_game(const std::filesystem::path& install,
       throw std::runtime_error("Expansion/asset filename in plan must be a valid basename");
     const auto source = std::filesystem::absolute(install / name);
     if (!std::filesystem::is_regular_file(source)) {
-      if (kind == "obb") throw std::runtime_error("OBB from plan is absent");
+      if (kind == "obb")
+        throw std::runtime_error(std::format("The install lacks the expansion file {} that its plan requires",
+                                             paths::utf8(name)));
     }
     obb_names.push_back(paths::utf8(name));
   }

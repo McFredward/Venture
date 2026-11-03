@@ -49,6 +49,17 @@ bool reserve_low_memory_guard() noexcept {
   ReleaseSRWLockExclusive(&reservations.lock);
   return guarded;
 }
+bool a32_identity_fastmem_safe() noexcept {
+  AcquireSRWLockExclusive(&reservations.lock);
+  guard_locked();
+  bool safe = reservations.guarded;
+  if (!safe && reservations.attempted && !reservations.failure)
+    for (std::size_t i = 0; i < reservations.count && !safe; ++i)
+      safe = reservations.ranges[i].start <= limit - 4096 &&
+             reservations.ranges[i].start + reservations.ranges[i].size == limit;
+  ReleaseSRWLockExclusive(&reservations.lock);
+  return safe;
+}
 void release_pre_reserved_low_memory() {
   AcquireSRWLockExclusive(&reservations.lock);
   const auto count = reservations.count;
@@ -131,8 +142,9 @@ std::vector<LowRange> reserve_low_memory() {
     fail(reservations.failure, reservations.failed_address);
   }
   if (!reservations.guarded)
-    log::warn("memory", "A32 wrap guard unavailable (Win32 error {}); using checked memory callbacks (identity fastmem disabled)",
-              reservations.guard_error);
+    log::warn("memory", "A32 wrap guard unavailable (Win32 error {}); {}", reservations.guard_error,
+              a32_identity_fastmem_safe() ? "the reserved last guest page keeps identity fastmem safe"
+                                          : "using checked memory callbacks (identity fastmem disabled)");
   return {reservations.ranges, reservations.ranges + reservations.count};
 }
 bool split_placeholder(GuestAddr p, std::uint64_t n) {
@@ -166,7 +178,11 @@ int replace_file_placeholder(int fd, GuestAddr p, std::uint64_t n, std::uint64_t
   if (!section) return GetLastError() == ERROR_ACCESS_DENIED ? -err::kEACCES : -err::kENOMEM;
   // memoryapi.h: MEM_REPLACE_PLACEHOLDER removes the 64 KiB base/offset
   // restriction; both must match the placeholder and be page aligned.
-  auto view = MapViewOfFile3(section, GetCurrentProcess(), g2h(p), off, n, MEM_REPLACE_PLACEHOLDER,
+  // Linux maps the final partial page with a zero-filled tail. A view past
+  // the section's end fails (ERROR_ACCESS_DENIED); a byte length bounded by
+  // EOF is rounded up to the page, which Windows zero-fills the same way.
+  const auto backed = std::min(n, static_cast<std::uint64_t>(size.QuadPart) - off);
+  auto view = MapViewOfFile3(section, GetCurrentProcess(), g2h(p), off, backed, MEM_REPLACE_PLACEHOLDER,
                              PAGE_READONLY, nullptr, 0);
   CloseHandle(section);
   if (view != g2h(p)) return -err::kENOMEM;

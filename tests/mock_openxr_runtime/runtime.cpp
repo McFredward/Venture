@@ -1078,13 +1078,22 @@ XrResult m_xrGetVulkanGraphicsRequirementsKHR(XrInstance i, XrSystemId s,
                                               XrGraphicsRequirementsVulkanKHR *out) {
   return m_xrGetVulkanGraphicsRequirements2KHR(i, s, out);
 }
+// XR_KHR_vulkan_enable's space-separated requirement lists, empty unless set.
+// Like the Oculus PC runtime, the enable2 creation calls below do not add them.
+XrResult legacy_vulkan_extensions(const char* variable, std::uint32_t cap, std::uint32_t *count, char *out) {
+  const char* listed = venture::environment::getenv(variable);
+  const std::string text = listed ? listed : "";
+  std::vector<char> values(text.begin(), text.end());
+  values.push_back('\0');
+  return enumerate(cap, count, out, values);
+}
 XrResult m_xrGetVulkanInstanceExtensionsKHR(XrInstance, XrSystemId, std::uint32_t cap,
                                             std::uint32_t *count, char *out) {
-  return enumerate(cap, count, out, std::vector<char>{'\0'});
+  return legacy_vulkan_extensions("VENTURE_MOCK_VULKAN_INSTANCE_EXTENSIONS", cap, count, out);
 }
-XrResult m_xrGetVulkanDeviceExtensionsKHR(XrInstance i, XrSystemId s, std::uint32_t c,
-                                          std::uint32_t *n, char *out) {
-  return m_xrGetVulkanInstanceExtensionsKHR(i, s, c, n, out);
+XrResult m_xrGetVulkanDeviceExtensionsKHR(XrInstance, XrSystemId, std::uint32_t cap,
+                                          std::uint32_t *count, char *out) {
+  return legacy_vulkan_extensions("VENTURE_MOCK_VULKAN_DEVICE_EXTENSIONS", cap, count, out);
 }
 std::set<VkInstance> created_instances;
 XrResult m_xrCreateVulkanInstanceKHR(XrInstance, const XrVulkanInstanceCreateInfoKHR *info,
@@ -1369,7 +1378,9 @@ XrResult m_xrLocateViews(XrSession, const XrViewLocateInfo *info, XrViewState *s
   auto head = venture::xr::compose(venture::xr::inverse(world_pose(info->space)), script.head);
   for (int eye = 0; eye < 2; ++eye) {
     views[eye].pose = venture::xr::compose(head, {{0, 0, 0, 1}, {eye ? 0.032f : -0.032f, 0, 0}});
-    views[eye].fov = {mock::host_fov[0], mock::host_fov[1], mock::host_fov[2], mock::host_fov[3]};
+    const auto f = script.view_fov.value_or(
+        std::array{mock::host_fov[0], mock::host_fov[1], mock::host_fov[2], mock::host_fov[3]});
+    views[eye].fov = {f[0], f[1], f[2], f[3]};
   }
   state->viewStateFlags = script.active ? 15 : 0;
   return enumerate(cap, count, out, views);

@@ -174,6 +174,12 @@ TEST_CASE("A32 VrApi 1.21 wire layouts, sret, Token32 and frame submission") {
   // legitimately be skipped by the existing haptic scheduler.
   std::memset(c.memory.at<void>(1600), 0, samples.size());
   CHECK(ventureMockXrAwaitHaptics(pulses + 1, 2000));
+  // The host's view is the layer's 45 degrees: one projection layer, uncut.
+  constexpr float quarter = 0.78539816f;
+  MockXrScript view{};
+  view.view_fov = std::array{-quarter, quarter, quarter, -quarter};
+  ventureMockXrSetScript(&view);
+  struct RestoreScript { ~RestoreScript() { MockXrScript defaults{}; ventureMockXrSetScript(&defaults); } } restore;
   vr::abi32::Projection layer{};
   layer.header = {1, 2, {1, 1, 1, 1}, 1, 0, 0};
   layer.head = t.head;
@@ -322,6 +328,19 @@ TEST_CASE(
   sl::shutdown_library();
 }
 
+namespace {
+bool adapted(std::string_view lib, std::string_view name) {
+  for (auto &fn : hle::registered_functions())
+    if (fn.library == lib && fn.name == name)
+      return fn.a32 && fn.handler != hle::a32::diagnostic;
+  return false;
+}
+} // namespace
+TEST_CASE("A32 VrApi 1.1x tracking transforms have adapters") {
+  vr::register_libraries();
+  CHECK(adapted("libvrapi.so", "vrapi_GetTrackingTransform"));
+  CHECK(adapted("libvrapi.so", "vrapi_SetTrackingTransform"));
+}
 TEST_CASE(
     "A32 Platform retains 64-bit IDs, low handles and entitlement semantics") {
   namespace op = ovrplatform;
@@ -345,6 +364,15 @@ TEST_CASE(
   auto entitled_message = op::test::wait_pop(session);
   CHECK(c.words("libovrplatformloader.so", "ovr_Message_IsError",
                 {entitled_message}) == 0);
+  // Unity 2017-2019 titles (Beat Saber demo) read every reply through
+  // GetNativeMessage and start through the Unity init wrappers; First
+  // Contact imports none of these.
+  CHECK(c.words("libovrplatformloader.so", "ovr_Message_GetNativeMessage",
+                {entitled_message}) == entitled_message);
+  for (auto name : {"ovr_UnityInitWrapper", "ovr_UnityInitWrapperAsynchronous", "ovr_UnityInitWrapperInternal",
+                    "ovr_UnityInitWrapperInternalAsynchronous", "ovr_PlatformInitializeAndroidAsynchronous",
+                    "ovr_Error_GetCode", "ovr_Error_GetHttpCode", "ovr_Error_GetDisplayableMessage"})
+    CHECK_MESSAGE(adapted("libovrplatformloader.so", name), name);
   CHECK(c.call("libovrplatformloader.so", "ovr_Message_GetRequestID",
                CallBuilder32{}.pointer(entitled_message)) == entitlement);
   c.words("libovrplatformloader.so", "ovr_FreeMessage", {entitled_message});
