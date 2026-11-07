@@ -1,4 +1,5 @@
 #include "libc_b/test.h"
+#include <algorithm>
 #include <array>
 #include <fstream>
 #include <thread>
@@ -41,6 +42,24 @@ TEST_CASE("Android external storage parents support recursive directory creation
   CHECK(call("close", {std::uint64_t(fd)}) == 0);
   CHECK(call("unlink", {h2g(profile.c_str())}) == 0);
   CHECK(call("rmdir", {h2g(directory.c_str())}) == 0);
+}
+
+TEST_CASE("The APK's directory and its lib parent are directories") {
+  // Mono's FileStream checks Directory.Exists on the parent of base.apk before opening it.
+  Thread thread;
+  const auto& lib = process_config().guest_native_lib_dir();
+  const auto app = "/data/app/" + process_config().package;
+  for (const auto& dir : {app, lib.substr(0, lib.rfind('/'))}) {
+    Stat stat{};
+    REQUIRE(path_stat(dir.c_str(), &stat) == 0);
+    CHECK((stat.mode & 0170000) == 0040000);
+  }
+  const auto fd = fd_open(app.c_str(), 0200000, 0);
+  REQUIRE(fd >= 0);
+  std::vector<Dirent> entries;
+  REQUIRE(FdTable::get().file(fd)->entries(entries) == 0);
+  CHECK(std::any_of(entries.begin(), entries.end(), [](const Dirent& d) { return std::string_view(d.name) == "base.apk"; }));
+  CHECK(call("close", {std::uint64_t(fd)}) == 0);
 }
 
 TEST_CASE("guest completed file writes are visible before close and completion markers") {
@@ -329,6 +348,63 @@ TEST_CASE("POSIX file mutation removes and replaces readonly files in writable d
   char bytes[3]{};
   REQUIRE(fd_pread(fresh, bytes, 3, 0) == 3); CHECK(std::memcmp(bytes, "new", 3) == 0);
   REQUIRE(fd_pread(target, bytes, 3, 0) == 3); CHECK(std::memcmp(bytes, "old", 3) == 0);
+}
+
+TEST_CASE("chmod accepts any mode and keeps the owner-write bit in stat") {
+  // Android app storage is single-uid: loaders chmod 0775/0755 their own
+  // directories and libraries and treat a failure as fatal.
+  Thread thread;
+  const auto directory = process_config().guest_data_dir() + "/chmod-modes";
+  const auto file = directory + "/lib.so";
+  struct Cleanup {
+    std::string directory, file;
+    ~Cleanup() {
+      call("chmod", {h2g(file.c_str()), 0666});
+      call("unlink", {h2g(file.c_str())});
+      call("rmdir", {h2g(directory.c_str())});
+    }
+  } cleanup{directory, file};
+  REQUIRE(call("mkdir", {h2g(directory.c_str()), 0700}) == 0);
+  for (std::uint64_t mode : {0775, 0755, 0700, 0555, 02775, 0777})
+    CHECK(call("chmod", {h2g(directory.c_str()), mode}) == 0);
+  const auto fd = static_cast<int>(fd_open(file.c_str(), 0100 | 01000 | 2, 0600));
+  REQUIRE(fd >= 0);
+  auto mode_of = [&] {
+    Stat s{};
+    REQUIRE(path_stat(file.c_str(), &s) == 0);
+    CHECK((s.mode & 0170000) == 0100000);
+    return s.mode & 07777;
+  };
+  const auto at_cwd_arg = static_cast<std::uint64_t>(static_cast<std::int64_t>(at_cwd));
+  for (std::uint64_t mode : {0775, 0755, 0644, 0600, 0700, 04755}) {
+    CHECK(call("chmod", {h2g(file.c_str()), mode}) == 0);
+    CHECK((mode_of() & 0200) != 0);
+  }
+  for (std::uint64_t mode : {0555, 0444, 0500, 0}) {
+    CHECK(call("chmod", {h2g(file.c_str()), mode}) == 0);
+    CHECK((mode_of() & 0222) == 0);
+  }
+  CHECK(call("fchmod", {static_cast<std::uint64_t>(fd), 0755}) == 0);
+  CHECK((mode_of() & 0200) != 0);
+  CHECK(call("fchmodat", {at_cwd_arg, h2g(file.c_str()), 0550, 0}) == 0);
+  CHECK((mode_of() & 0222) == 0);
+  CHECK(call("fchmodat", {at_cwd_arg, h2g(file.c_str()), 0770, 0x100}) == 0);
+  CHECK((mode_of() & 0200) != 0);
+  CHECK(call("fchmodat", {at_cwd_arg, h2g(file.c_str()), 0770, 0x1}) == -1);
+  CHECK(*thread.thread.errno_location() == err::einval);
+  // The file stays writable through the descriptor and by name.
+  REQUIRE(fd_write(fd, "elf", 3) == 3);
+  FdTable::get().close(fd);
+  const auto again = static_cast<int>(fd_open(file.c_str(), 2, 0));
+  REQUIRE(again >= 0);
+  FdTable::get().close(again);
+#ifdef _WIN32
+  // Win32 holds only owner write: execute and group/other bits are dropped.
+  CHECK(call("chmod", {h2g(file.c_str()), 0750}) == 0);
+  CHECK(mode_of() == 0666);
+  CHECK(call("chmod", {h2g(file.c_str()), 0550}) == 0);
+  CHECK(mode_of() == 0444);
+#endif
 }
 
 TEST_CASE("POSIX file mutation replaces only empty destination directories") {

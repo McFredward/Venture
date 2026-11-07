@@ -86,6 +86,8 @@ struct MappedPath {
   std::filesystem::path host, root;
   bool readonly = false;
   int device = 0;
+  // Set for a published expansion/asset entry in Android/obb/<package>: its name.
+  std::string expansion;
 };
 // VENTURE_TRACE_VFS, read once: a per-read environment lookup costs more than the read.
 inline bool trace_vfs() {
@@ -131,6 +133,9 @@ class File {
     return 0;
   }
   virtual int truncate(std::int64_t) { return -err::einval; }
+  // Called before a writable shared mapping: a file that defers becoming
+  // writable (an expansion entry) does so here.
+  virtual int prepare_write() { return 0; }
   virtual int sync() { return -err::einval; }
   virtual int set_times(const Timespec*) { return -err::enotsup; }
   virtual int chmod(std::uint32_t) { return -err::enotsup; }
@@ -199,7 +204,9 @@ std::int64_t syscall_impl(GuestThread&, std::uint64_t, const std::uint64_t*);
 // OS operations are implemented only in platform/{win32,posix}/libc_*.cpp.
 namespace host {
 // True only when mount-relative components cannot redirect to another path.
-bool unredirected_path(const std::filesystem::path& root, const std::filesystem::path& path);
+// *error becomes -ENOTDIR when a component before the last is a file, as Linux
+// fails such a lookup.
+bool unredirected_path(const std::filesystem::path& root, const std::filesystem::path& path, int* error);
 int exists(const std::filesystem::path&, bool follow);
 std::shared_ptr<File> open(const MappedPath&, int, std::uint32_t, int* error);
 // Native Java descriptor bridge: create an owned, read-only open description.

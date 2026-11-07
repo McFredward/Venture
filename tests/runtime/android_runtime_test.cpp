@@ -257,6 +257,12 @@ TEST_CASE("android NativeActivity AArch64 fields and ordered lifecycle callbacks
   test::android_remove_callback(free_cb);
   call("ANativeActivity_setWindowFormat", {a->address(), 4});
   CHECK(window->format == 4);
+  // ANativeActivity_finish reaches the framework's Activity.finish().
+  static GuestAddr finished = 0;
+  android::set_native_activity_finisher([](GuestAddr activity) { finished = activity; });
+  call("ANativeActivity_finish", {a->address()});
+  CHECK(finished == a->address());
+  android::set_native_activity_finisher(nullptr);
   a->event(ActivityEvent::pause);
   a->event(ActivityEvent::stop);
   a->destroy();
@@ -301,4 +307,30 @@ TEST_CASE("android choreographer executes on looper and refresh carries the int6
   call("AChoreographer_unregisterRefreshRateCallback", {c, refresh_cb, 18});
   test::android_remove_callback(frame_cb);
   test::android_remove_callback(refresh_cb);
+}
+TEST_CASE("android choreographer runs a frame callback at the next vsync when the display phase lies ahead") {
+  // An unpaced runtime predicts display times many periods ahead; Unity's
+  // TERM_WINDOW handler waits for one frame callback (Open Brush quit hang).
+  auto* l = prepare_looper(1);
+  display_vsync(0, 11111111);                                // rephase on the next frame time
+  display_vsync(monotonic_ns() + 30'000'000'000, 11111111);  // 30 s ahead
+  auto c = call("AChoreographer_getInstance");
+  REQUIRE(c);
+  bool frame = false;
+  auto frame_cb = test::android_callback([&](const GuestCallArgs& args) {
+    CHECK(args.integers[0] <= static_cast<std::uint64_t>(monotonic_ns()));
+    frame = true;
+    return GuestCallResult{};
+  });
+  const auto posted = monotonic_ns();
+  call("AChoreographer_postFrameCallback64", {c, frame_cb, 19});
+  CHECK(test::wait_until([&] {
+    l->poll(20, nullptr, nullptr, nullptr);
+    return frame;
+  }));
+  // Well before the predicted display time 30 s ahead (a loaded runner took 1.8 s).
+  CHECK(monotonic_ns() - posted < 10'000'000'000);
+  display_vsync(0, 11111111);
+  display_vsync(monotonic_ns(), 11111111);
+  test::android_remove_callback(frame_cb);
 }

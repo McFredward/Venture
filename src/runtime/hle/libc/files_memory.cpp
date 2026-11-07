@@ -2,6 +2,7 @@
 #include <algorithm>
 #include <cstring>
 namespace venture::hle::libc {
+int chmod_at(int dirfd, const char* p, std::uint32_t mode, int flags);
 namespace {
 class MemoryFd final : public File {
  public:
@@ -48,7 +49,8 @@ class MemoryFd final : public File {
   int truncate(std::int64_t size) override {
     if (size < 0) return -err::einval;
     std::lock_guard lock(mutex);
-    if ((size < bytes_.size() && (seals_ & 2)) || (size > bytes_.size() && (seals_ & 4)))
+    const auto length = static_cast<std::uint64_t>(size);
+    if ((length < bytes_.size() && (seals_ & 2)) || (length > bytes_.size() && (seals_ & 4)))
       return -err::eperm;
     try {
       bytes_.resize(size);
@@ -168,18 +170,13 @@ std::int64_t pathconf_fn(const char* p, int name) {
       return failure(err::einval);
   }
 }
-int fchmodat_fn(int fd, const char* p, std::uint32_t, int flags) {
-  if (flags & ~0x100) return failure(err::einval);
-  Stat s;
-  return result(path_stat(p, &s, fd, !(flags & 0x100)));
-}
 }  // namespace
 void register_files_memory(HleLibrary& lib) {
 #define B(n, f) VENTURE_LIBC_BIND(lib, n, f)
   B("memfd_create", memfd_fn);
   B("flock", flock_fn);
   B("pathconf", pathconf_fn);
-  B("fchmodat", fchmodat_fn);
+  B("fchmodat", chmod_at);
 #undef B
 }
 }  // namespace venture::hle::libc

@@ -1,6 +1,8 @@
 #include <doctest/doctest.h>
 #include "common/environment.h"
 #include "core/address_space.h"
+#include "core/error.h"
+#include "core/guest_heap.h"
 #include "core/hle_runtime.h"
 #include "core/thread_runtime.h"
 #include "core/wait.h"
@@ -22,8 +24,12 @@
 #include <utility>
 #include <vector>
 #ifdef _WIN32
+#ifndef NOMINMAX
 #define NOMINMAX
+#endif
+#ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
+#endif
 #include <windows.h>
 #endif
 

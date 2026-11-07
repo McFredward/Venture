@@ -61,7 +61,9 @@ std::unordered_map<VkCommandBuffer, Scissors> states;
 // Graphics pipelines whose scissors are static: binding one invalidates the
 // dynamic scissors ("made invalid by another pipeline bind with that state
 // specified as static", Pipeline Dynamic State).
-std::unordered_set<VkPipeline> static_scissor;
+// Pipelines whose scissors the guest baked in: the host pipeline takes them
+// as dynamic state, so they can be clamped to each render area like dynamic ones.
+std::unordered_map<VkPipeline, std::vector<VkRect2D>> static_scissor;
 // Images that can be attachments (extent of mip 0), their views (extent of the
 // base mip), and host framebuffers created smaller than the guest asked.
 struct Image {
@@ -620,21 +622,44 @@ VkResult create_host_framebuffer(VkDevice d, const VkFramebufferCreateInfo* info
 // A guest framebuffer with no size or a null attachment view (HITMAN on Monado
 // computed 0x0 render targets and never created them) is invalid, and RADV
 // dereferences the null view when a pass on it begins. A Quest driver does not
-// crash there, so each missing attachment gets a 1x1 host placeholder and the
-// instance renders into nothing.
+// crash there, so each missing attachment gets a host placeholder: 1x1 for a
+// framebuffer with no size, which then renders into nothing, otherwise of the
+// framebuffer's size so the views the guest did pass keep rendering (transient,
+// lazily allocated memory where the device has it; released with the
+// framebuffer). Unity skips an attachment whose image it lacks
+// ("Missing Vulkan framebuffer attachment image?") and passes fewer attachments
+// than the render pass has (Attack on Titan VR: NVIDIA faulted on a null image
+// view in vkCmdBeginRenderPass); the views it did pass keep their order, so each
+// takes the next render pass attachment of its format and the rest get
+// placeholders as well.
 VkResult VKAPI_CALL create_framebuffer(VkDevice d, const VkFramebufferCreateInfo* info,
                                        const VkAllocationCallbacks* alloc, VkFramebuffer* out) {
+  std::size_t expected = info->attachmentCount;
+  {
+    std::lock_guard lock(mutex);
+    if (auto it = passes.find(info->renderPass); it != passes.end()) expected = it->second.formats.size();
+  }
   if (info->flags & VK_FRAMEBUFFER_CREATE_IMAGELESS_BIT ||
-      (info->width && info->height &&
+      (info->width && info->height && info->attachmentCount >= expected &&
        std::none_of(info->pAttachments, info->pAttachments + info->attachmentCount,
                     [](VkImageView v) { return v == VK_NULL_HANDLE; })))
     return create_host_framebuffer(d, info, alloc, out);
   std::optional<Pass> pass;
+  std::vector<VkImageView> attachments(info->pAttachments, info->pAttachments + info->attachmentCount);
   {
     std::lock_guard lock(mutex);
     if (auto it = passes.find(info->renderPass); it != passes.end()) pass = it->second;
+    if (pass && attachments.size() < pass->formats.size()) {
+      std::vector<VkImageView> aligned(pass->formats.size(), VK_NULL_HANDLE);
+      std::size_t given = 0;
+      for (std::size_t i = 0; i < aligned.size() && given < attachments.size(); ++i) {
+        const auto view = views.find(attachments[given]);
+        if (!attachments[given] || view == views.end() || view->second.format == pass->formats[i])
+          aligned[i] = attachments[given++];
+      }
+      attachments = std::move(aligned);
+    }
   }
-  std::vector<VkImageView> attachments(info->pAttachments, info->pAttachments + info->attachmentCount);
   std::vector<StandIn> blanks;
   auto failed = [&](VkResult result) {
     for (const auto& blank : blanks) release(d, blank);
@@ -645,6 +670,8 @@ VkResult VKAPI_CALL create_framebuffer(VkDevice d, const VkFramebufferCreateInfo
     return result;
   };
   const auto layers = std::max(info->layers, pass ? pass->view_layers : 1u);
+  const bool sized = info->width && info->height;
+  const VkExtent2D extent = sized ? VkExtent2D{info->width, info->height} : VkExtent2D{1, 1};
   for (std::uint32_t i = 0; i < attachments.size(); ++i) {
     if (attachments[i]) continue;
     // Never forward an unresolved null view, even when repair is impossible.
@@ -658,7 +685,7 @@ VkResult VKAPI_CALL create_framebuffer(VkDevice d, const VkFramebufferCreateInfo
     VkImageUsageFlags usage = depth ? VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT : VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
     if (pass->input[i]) usage |= VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT;
     VkResult failure = VK_ERROR_UNKNOWN;
-    if (auto blank = transient_attachment(d, i, format, pass->samples[i], VK_IMAGE_VIEW_TYPE_2D_ARRAY, aspect, {1, 1},
+    if (auto blank = transient_attachment(d, i, format, pass->samples[i], VK_IMAGE_VIEW_TYPE_2D_ARRAY, aspect, extent,
                                           layers, usage, &failure)) {
       attachments[i] = blank->view;
       blanks.push_back(*blank);
@@ -666,16 +693,19 @@ VkResult VKAPI_CALL create_framebuffer(VkDevice d, const VkFramebufferCreateInfo
   }
   static std::atomic<int> reports{0};
   if (reports.fetch_add(1, std::memory_order_relaxed) < 8)
-    log::warn("vulkan", "Guest framebuffer {}x{} has {} null attachment view(s); the host gets a 1x1 framebuffer "
-              "with placeholders", info->width, info->height, blanks.size());
+    log::warn("vulkan", "Guest framebuffer {}x{} has {} null or missing attachment view(s) of {}; the host gets a "
+              "{}x{} framebuffer with placeholders", info->width, info->height, blanks.size(), attachments.size(),
+              extent.width, extent.height);
   auto copy = *info;
+  copy.attachmentCount = static_cast<std::uint32_t>(attachments.size());
   copy.pAttachments = attachments.data();
-  copy.width = copy.height = 1;
+  copy.width = extent.width;
+  copy.height = extent.height;
   copy.layers = std::max(info->layers, 1u);
   const auto r = create_host_framebuffer(d, &copy, alloc, out);
   if (r != VK_SUCCESS) return failed(r);
   std::lock_guard lock(mutex);
-  clamped[*out] = {1, 1};
+  if (!sized) clamped[*out] = extent;
   if (!blanks.empty()) placeholders[*out] = {d, std::move(blanks)};
   return r;
 }
@@ -854,13 +884,52 @@ bool bakes_scissor(const VkGraphicsPipelineCreateInfo& info) {
     }
   return true;
 }
+// A baked scissor cannot follow the render area: an eye-sized scissor on a
+// pipeline reused for an 848x1060 panel (the Model 2 ports' menu) rasterizes
+// past the panel's depth buffer, which a Quest's tiler never touches and NVIDIA
+// faults ("ZT Violation", then VK_ERROR_DEVICE_LOST). The host pipeline makes
+// the scissor dynamic; binding it sets the baked rects, clamped in a render pass.
+bool converts_scissor(const VkGraphicsPipelineCreateInfo& info) {
+  if (!bakes_scissor(info) || !info.pViewportState->pScissors || !info.pViewportState->scissorCount) return false;
+  if (info.pDynamicState)
+    for (std::uint32_t i = 0; i < info.pDynamicState->dynamicStateCount; ++i)
+      if (info.pDynamicState->pDynamicStates[i] == VK_DYNAMIC_STATE_VIEWPORT_WITH_COUNT) return false;
+  return true;
+}
 VkResult VKAPI_CALL create_graphics_pipelines(VkDevice d, VkPipelineCache cache, std::uint32_t count,
                                               const VkGraphicsPipelineCreateInfo* infos,
                                               const VkAllocationCallbacks* alloc, VkPipeline* out) {
-  auto r = next<PFN_vkCreateGraphicsPipelines, "vkCreateGraphicsPipelines">(d)(d, cache, count, infos, alloc, out);
+  std::vector<VkGraphicsPipelineCreateInfo> copies;
+  std::vector<std::vector<VkDynamicState>> states;
+  std::vector<VkPipelineDynamicStateCreateInfo> dynamic;
+  for (std::uint32_t i = 0; i < count; ++i)
+    if (converts_scissor(infos[i])) {
+      copies.assign(infos, infos + count);
+      states.resize(count);
+      dynamic.resize(count);
+      break;
+    }
+  for (std::uint32_t i = 0; i < copies.size(); ++i) {
+    if (!converts_scissor(infos[i])) continue;
+    if (const auto* given = infos[i].pDynamicState) {
+      states[i].assign(given->pDynamicStates, given->pDynamicStates + given->dynamicStateCount);
+      dynamic[i] = *given;
+    } else {
+      dynamic[i] = {VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO};
+    }
+    states[i].push_back(VK_DYNAMIC_STATE_SCISSOR);
+    dynamic[i].dynamicStateCount = static_cast<std::uint32_t>(states[i].size());
+    dynamic[i].pDynamicStates = states[i].data();
+    copies[i].pDynamicState = &dynamic[i];
+  }
+  auto r = next<PFN_vkCreateGraphicsPipelines, "vkCreateGraphicsPipelines">(d)(
+      d, cache, count, copies.empty() ? infos : copies.data(), alloc, out);
   std::lock_guard lock(mutex);
   for (std::uint32_t i = 0; i < count; ++i)
-    if (out[i] && bakes_scissor(infos[i])) static_scissor.insert(out[i]);
+    if (out[i] && converts_scissor(infos[i])) {
+      const auto& viewport = *infos[i].pViewportState;
+      static_scissor[out[i]].assign(viewport.pScissors, viewport.pScissors + viewport.scissorCount);
+    }
   return r;
 }
 void VKAPI_CALL destroy_pipeline(VkDevice d, VkPipeline pipeline, const VkAllocationCallbacks* alloc) {
@@ -871,15 +940,20 @@ void VKAPI_CALL destroy_pipeline(VkDevice d, VkPipeline pipeline, const VkAlloca
   next<PFN_vkDestroyPipeline, "vkDestroyPipeline">(d)(d, pipeline, alloc);
 }
 void VKAPI_CALL bind_pipeline(VkCommandBuffer cmd, VkPipelineBindPoint point, VkPipeline pipeline) {
+  std::optional<Forward> f;
   if (point == VK_PIPELINE_BIND_POINT_GRAPHICS) {
     std::lock_guard lock(mutex);
-    if (static_scissor.contains(pipeline)) {
+    if (auto it = static_scissor.find(pipeline); it != static_scissor.end()) {
+      // The baked rects become this command buffer's scissors, as if set.
       auto& s = states[cmd];
-      s.rects.clear();
+      s.with_count = false;
+      s.rects = it->second;
       s.host.clear();
+      f = forwarded(s, 0, static_cast<std::uint32_t>(s.rects.size()));
     }
   }
   next<PFN_vkCmdBindPipeline, "vkCmdBindPipeline">(command_device(cmd))(cmd, point, pipeline);
+  if (f) forward(cmd, *f);
 }
 void VKAPI_CALL end_pass(VkCommandBuffer cmd) {
   const auto after = end_area(cmd);
