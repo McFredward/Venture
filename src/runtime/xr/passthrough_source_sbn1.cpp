@@ -19,18 +19,36 @@ bool session(bool v2, const std::function<bool()>& alive, std::uint64_t first_an
   const auto deadline = sys::now_ms() + first_answer_ms;
   if (!channel->transfer(true, record.data(), record.size(), alive, deadline)) return false;
   bool observed = false;
+  std::optional<Permission> previous;
   while (alive()) {
     Record answer{};
     if (!channel->transfer(false, answer.data(), answer.size(), alive, observed ? 0 : deadline)) break;
     const auto permission = reply(answer, process, server, nonce, v2);
-    if (!permission) break;
-    if (!observed) log::info("xr-passthrough", "External passthrough source answered over SBN1 v{} (compatibility)", v2 ? 2 : 1);
+    if (!permission) {
+      if (!once) log::warn("xr-passthrough", "External passthrough source sent an invalid SBN1 v{} answer (client PID {}, server PID {}); no permission from this answer",
+                          v2 ? 2 : 1, process, server);
+      break;
+    }
+    if (!observed) log::info("xr-passthrough", "External passthrough source answered over SBN1 v{} (compatibility, {} connection, client PID {}, server PID {})",
+                             v2 ? 2 : 1, once ? "probe" : "active", process, server);
+    if (!once && (!previous || previous->rgba != permission->rgba || previous->generation != permission->generation)) {
+      if (permission->rgba)
+        log::info("xr-passthrough", "External source granted RGBA source permission (client PID {}, server PID {}, generation {})",
+                  process, server, permission->generation);
+      else
+        log::info("xr-passthrough", "External source has not granted RGBA source permission (client PID {}, server PID {}); waiting on this connection",
+                  process, server);
+    }
     observed = true;
+    previous = permission;
     // Any valid answer means the source is there: the server grants RGBA only
     // once this process's frames reach it, on this connection.
     publish({true, permission->rgba, permission->rgba ? permission->generation : 0});
     if (once) break;
   }
+  if (observed && !once && alive())
+    log::warn("xr-passthrough", "External source connection ended (client PID {}, server PID {}); withdrawing permission before retry",
+              process, server);
   return observed;
 }
 } // namespace
