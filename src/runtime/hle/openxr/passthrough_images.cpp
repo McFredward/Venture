@@ -14,6 +14,7 @@ struct Eye {
   std::unique_ptr<ColorImages> color;
   std::int64_t source_format = 0;
   VkExtent2D source_extent{};
+  bool reported = false;
   XrResult destroy() {
     color.reset(); // Retire GPU commands before destroying their target images.
     if (!handle) return XR_SUCCESS;
@@ -24,7 +25,7 @@ struct Eye {
     auto idle = reinterpret_cast<PFN_vkQueueWaitIdle>(gfx::gpu_device().get_instance_proc_addr(binding.instance, "vkQueueWaitIdle"));
     if (idle(session().queue) != VK_SUCCESS) return XR_ERROR_RUNTIME_FAILURE;
     auto result = dev_destroy_swapchain(handle);
-    if (XR_SUCCEEDED(result)) { handle = XR_NULL_HANDLE; images.clear(); }
+    if (XR_SUCCEEDED(result)) { handle = XR_NULL_HANDLE; images.clear(); reported = false; }
     return result;
   }
   XrResult prepare(XrSession target, const Swapchain& chain) {
@@ -175,6 +176,15 @@ XrResult prepare_passthrough_images(XrSession target, const XrCompositionLayerPr
         output.views[i].subImage.imageRect.offset.y - output.views[i].subImage.imageRect.extent.height;
     output.views[i].subImage.imageRect = map_presentation_rect(output.views[i].subImage.imageRect,
         {chain.info.width, chain.info.height}, {eye.info.width, eye.info.height});
+    if (!eye.reported) {
+      const auto& view = output.views[i];
+      const auto& rect = view.subImage.imageRect;
+      log::info("xr-passthrough", "External source eye {}: guest={}x{}/format{} slice={}, host={}x{}/format{}; rect=[{},{},{}x{}], fov_rad=[{:.4f},{:.4f},{:.4f},{:.4f}], guest_flags={:#x}",
+                i, chain.info.width, chain.info.height, chain.info.format, projection.views[i].subImage.imageArrayIndex,
+                eye.info.width, eye.info.height, eye.info.format, rect.offset.x, rect.offset.y, rect.extent.width, rect.extent.height,
+                view.fov.angleLeft, view.fov.angleRight, view.fov.angleUp, view.fov.angleDown, projection.layerFlags);
+      eye.reported = true;
+    }
   }
   return XR_SUCCESS;
 }
