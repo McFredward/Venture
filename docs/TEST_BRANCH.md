@@ -6,8 +6,9 @@ upstream; its old feature branch is no longer the source of application updates.
 
 The November 8 update includes upstream `4f9fcd2`. The runtime adds diagnostic
 messages for the temporary SBN1 companion connection: probe versus active
-connection, client/server process IDs, and waiting versus granted RGBA source
-permission. This is a diagnostic build, not a confirmed fix for the reported
+connection, client/server process IDs, waiting versus granted RGBA source
+permission, and each prepared eye's image format, extent, rectangle and FOV.
+This is a diagnostic build, not a confirmed fix for the reported
 black background on Steam Frame. The permission checks and image submission
 remain unchanged.
 
@@ -46,6 +47,10 @@ selected the external source. The companion answered SBN1 v2, but Venture never
 received RGBA source permission and therefore submitted opaque images. SteamVR
 reported successful frame submission. Its dashboard was closed during the
 failure. These logs establish the missing permission, not which update caused it.
+
+The same installation runs Demeo successfully. The room-scan agent also verified
+that the roomscan.17 package's PC provider DLL is byte-identical to stable main.
+This narrows the investigation but does not identify a Venture regression.
 
 The companion's `no-declaration` counter in those logs names the compositor
 process. It must not be treated as proof that Venture sent an invalid request.
